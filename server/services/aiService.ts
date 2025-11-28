@@ -39,7 +39,7 @@ export async function analyzeVideoWithVertex(
 ): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
-  const visionModel = model || process.env.VERTEX_AI_MODEL || 'gemini-3.0-pro';
+  const visionModel = model || process.env.VERTEX_AI_MODEL || 'gemini-3-pro-preview';
 
   // Initialize with Vertex AI backend
   const ai = new GoogleGenAI({

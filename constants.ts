@@ -1,8 +1,8 @@
-export const GEMINI_MODEL = "gemini-3-pro";
+export const GEMINI_MODEL = "gemini-3-pro-preview";
 export const MAX_VIDEO_SIZE_MB = 20; // Client-side API limit safety
 
 // Vertex AI defaults
-export const VERTEX_DEFAULT_MODEL = "gemini-3-pro";
+export const VERTEX_DEFAULT_MODEL = "gemini-3-pro-preview";
 export const VERTEX_DEFAULT_LOCATION = "global";
 
 // Available Vertex AI locations
