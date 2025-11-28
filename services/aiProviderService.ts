@@ -45,7 +45,8 @@ export function isConfigValid(config: AIConfig | null): boolean {
   if (config.provider === 'gemini') {
     return Boolean(config.apiKey && config.apiKey.length > 0);
   } else {
-    return Boolean(config.projectId && config.location);
+    // Vertex: projectId is optional (falls back to env vars), location has default
+    return true;
   }
 }
 

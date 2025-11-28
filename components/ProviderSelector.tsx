@@ -84,7 +84,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
         <div className="flex items-center space-x-2">
           <input
             type="text"
-            placeholder="Project ID"
+            placeholder="Project ID (optional)"
             value={(config as VertexConfig).projectId || ''}
             onChange={(e) =>
               onChange({
@@ -92,11 +92,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
                 projectId: e.target.value,
               } as VertexConfig)
             }
-            className={`text-sm px-3 py-1.5 rounded-lg border ${
-              !(config as VertexConfig).projectId
-                ? 'border-red-300 bg-red-50'
-                : 'border-gray-200 bg-gray-50'
-            } w-36 placeholder-gray-400`}
+            className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 w-40 placeholder-gray-400"
           />
           <select
             value={(config as VertexConfig).location || VERTEX_DEFAULT_LOCATION}

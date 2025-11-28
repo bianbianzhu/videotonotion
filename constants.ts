@@ -1,9 +1,9 @@
-export const GEMINI_MODEL = "gemini-2.5-flash"; // Optimized for speed and multimodal
+export const GEMINI_MODEL = "gemini-3-pro";
 export const MAX_VIDEO_SIZE_MB = 20; // Client-side API limit safety
 
 // Vertex AI defaults
-export const VERTEX_DEFAULT_MODEL = "gemini-2.0-flash";
-export const VERTEX_DEFAULT_LOCATION = "us-central1";
+export const VERTEX_DEFAULT_MODEL = "gemini-3-pro";
+export const VERTEX_DEFAULT_LOCATION = "global";
 
 // Available Vertex AI locations
 export const VERTEX_LOCATIONS = [
