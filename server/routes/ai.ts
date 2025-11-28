@@ -8,9 +8,9 @@ router.post('/vertex/analyze', async (req: Request, res: Response) => {
   try {
     const { projectId, location, model, base64Data, mimeType } = req.body;
 
-    if (!projectId || !location || !base64Data || !mimeType) {
+    if (!base64Data || !mimeType) {
       res.status(400).json({
-        error: 'Missing required fields: projectId, location, base64Data, mimeType',
+        error: 'Missing required fields: base64Data, mimeType',
       });
       return;
     }

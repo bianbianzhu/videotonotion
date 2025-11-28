@@ -21,9 +21,9 @@ const STORAGE_KEY = 'videotonotion_sessions';
 
 /** Serializes sessions for localStorage (excludes non-serializable fields) */
 function serializeSessions(sessions: VideoSession[]): string {
-  // Persist sessions that have reached READY state (download complete) or beyond
+  // Persist sessions that have reached READY state or beyond (excluding ERROR)
   const persistableSessions = sessions
-    .filter((s) => s.status === ProcessingStatus.READY || s.status === ProcessingStatus.COMPLETED)
+    .filter((s) => s.status >= ProcessingStatus.READY && s.status !== ProcessingStatus.ERROR)
     .map(({ file, ...rest }) => ({
       ...rest,
       date: rest.date instanceof Date ? rest.date.toISOString() : rest.date,
