@@ -27,6 +27,8 @@ function serializeSessions(sessions: VideoSession[]): string {
     .map(({ file, ...rest }) => ({
       ...rest,
       date: rest.date instanceof Date ? rest.date.toISOString() : rest.date,
+      // Strip images from notes to save localStorage space
+      notes: rest.notes?.map(({ image, ...note }) => note),
     }));
   return JSON.stringify(persistableSessions);
 }
