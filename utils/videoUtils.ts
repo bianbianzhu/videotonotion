@@ -22,7 +22,7 @@ export const extractFrameFromVideo = async (
     video.src = videoUrl;
     video.muted = true;
     video.currentTime = timestamp;
-    
+
     // Safety timeout
     const timeout = setTimeout(() => {
         reject(new Error("Frame extraction timed out"));
@@ -49,7 +49,7 @@ export const extractFrameFromVideo = async (
     };
 
     video.addEventListener('seeked', onSeeked, { once: true });
-    
+
     // Trigger loading
     video.load();
     // We don't strictly need to play, but setting currentTime triggers seek

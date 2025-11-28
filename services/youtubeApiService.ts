@@ -74,3 +74,26 @@ export function getFullVideoUrl(sessionId: string): string {
 export async function cleanupSession(sessionId: string): Promise<void> {
   await fetch(`${API_BASE}/session/${sessionId}`, { method: 'DELETE' });
 }
+
+/**
+ * Extract a frame from a video at a specific timestamp using server-side ffmpeg.
+ * @param sessionId - The YouTube session ID
+ * @param timestamp - Timestamp in seconds
+ * @returns Base64-encoded JPEG image as data URL
+ */
+export async function extractFrameFromServer(
+  sessionId: string,
+  timestamp: number
+): Promise<string> {
+  const response = await fetch(
+    `${API_BASE}/frame/${sessionId}?timestamp=${timestamp}`
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || 'Failed to extract frame');
+  }
+
+  const data = await response.json();
+  return data.image;
+}

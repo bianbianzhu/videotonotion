@@ -107,3 +107,31 @@ export function cleanupSession(sessionId: string): void {
 export function getSessionDir(sessionId: string): string {
   return path.join(TEMP_DIR, sessionId);
 }
+
+/**
+ * Extracts a frame from a video at a specific timestamp using ffmpeg.
+ * @param videoPath - Path to the video file
+ * @param timestamp - Timestamp in seconds
+ * @returns Base64-encoded JPEG image
+ */
+export async function extractFrame(
+  videoPath: string,
+  timestamp: number
+): Promise<string> {
+  const { execSync } = await import('child_process');
+
+  // Use ffmpeg to extract a frame at the specified timestamp
+  // -ss before -i for fast seeking
+  // -vframes 1 to extract only one frame
+  // -f image2pipe to output to stdout
+  // -vcodec mjpeg to output as JPEG
+  const cmd = `ffmpeg -ss ${timestamp} -i "${videoPath}" -vframes 1 -f image2pipe -vcodec mjpeg pipe:1 2>/dev/null`;
+
+  try {
+    const buffer = execSync(cmd, { maxBuffer: 10 * 1024 * 1024 }); // 10MB max
+    const base64 = buffer.toString('base64');
+    return `data:image/jpeg;base64,${base64}`;
+  } catch (error: any) {
+    throw new Error(`Failed to extract frame at ${timestamp}s: ${error.message}`);
+  }
+}

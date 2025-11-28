@@ -14,6 +14,7 @@ import {
   fetchChunk,
   getFullVideoUrl,
   cleanupSession as cleanupYouTubeSession,
+  extractFrameFromServer,
 } from './services/youtubeApiService';
 
 const simpleId = () => Math.random().toString(36).substr(2, 9);
@@ -218,7 +219,14 @@ const App: React.FC = () => {
       const enrichedSegments: NoteSegment[] = [];
       for (const segment of allSegments) {
         try {
-          const frameData = await extractFrameFromVideo(videoUrlForFrames, segment.timestamp);
+          let frameData: string;
+          if (selectedSession.youtubeSessionId) {
+            // Use server-side ffmpeg for YouTube videos (more reliable)
+            frameData = await extractFrameFromServer(selectedSession.youtubeSessionId, segment.timestamp);
+          } else {
+            // Use browser-side extraction for direct uploads
+            frameData = await extractFrameFromVideo(videoUrlForFrames, segment.timestamp);
+          }
           enrichedSegments.push({ ...segment, image: frameData });
         } catch (err) {
           console.warn(`Frame skip at ${segment.timestamp}`, err);
@@ -226,7 +234,7 @@ const App: React.FC = () => {
         }
       }
 
-      // Cleanup
+      // Cleanup blob URL for direct uploads
       if (!selectedSession.youtubeSessionId && videoUrlForFrames.startsWith('blob:')) {
         URL.revokeObjectURL(videoUrlForFrames);
       }
@@ -237,10 +245,11 @@ const App: React.FC = () => {
         currentChunk: undefined,
       });
 
+      // TODO: Re-enable cleanup after fixing frame extraction
       // Cleanup YouTube session after successful processing
-      if (selectedSession.youtubeSessionId) {
-        cleanupYouTubeSession(selectedSession.youtubeSessionId).catch(console.error);
-      }
+      // if (selectedSession.youtubeSessionId) {
+      //   cleanupYouTubeSession(selectedSession.youtubeSessionId).catch(console.error);
+      // }
     } catch (err: any) {
       updateSession(selectedSession.id, {
         status: ProcessingStatus.ERROR,

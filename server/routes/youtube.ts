@@ -7,6 +7,7 @@ import {
   downloadVideo,
   getSessionDir,
   cleanupSession,
+  extractFrame,
 } from '../services/ytdlpService.js';
 import { chunkVideo, getChunkPath } from '../services/chunkService.js';
 
@@ -183,6 +184,36 @@ router.get('/full/:sessionId', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error streaming full video:', error);
     res.status(500).json({ error: error.message || 'Failed to stream video' });
+  }
+});
+
+// GET /api/youtube/frame/:sessionId - Extract a frame at a specific timestamp using ffmpeg
+router.get('/frame/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+    const timestamp = parseFloat(req.query.timestamp as string);
+
+    if (isNaN(timestamp) || timestamp < 0) {
+      res.status(400).json({ error: 'Valid timestamp parameter is required' });
+      return;
+    }
+
+    const session = sessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found or expired' });
+      return;
+    }
+
+    if (!fs.existsSync(session.fullVideoPath)) {
+      res.status(404).json({ error: 'Video file not found' });
+      return;
+    }
+
+    const frameData = await extractFrame(session.fullVideoPath, timestamp);
+    res.json({ image: frameData, timestamp });
+  } catch (error: any) {
+    console.error('Error extracting frame:', error);
+    res.status(500).json({ error: error.message || 'Failed to extract frame' });
   }
 });
 
