@@ -1,21 +1,45 @@
-import 'dotenv/config';
-import { ContentListUnion, GenerateContentConfig, GoogleGenAI } from '@google/genai';
+import "dotenv/config";
+import {
+  ContentListUnion,
+  GenerateContentConfig,
+  GoogleGenAI,
+} from "@google/genai";
+import { z } from "zod";
+import { zodToJsonSchema } from "zod-to-json-schema";
 
 /** A single note segment extracted from video analysis */
-export interface NoteSegment {
-  timestamp: number;
-  title: string;
-  markdown: string;
-}
+
+const responseChunkSchema = z.object({
+  timestamp: z
+    .number()
+    .describe(
+      "The exact timestamp (in seconds) where the visual slide or key content appears."
+    ),
+  title: z.string().describe("A concise title for the section."),
+  markdown: z
+    .string()
+    .describe(
+      "A detailed summary paragraph of the spoken content for that section. Use markdown formatting"
+    ),
+});
+
+const responseSchema = z
+  .array(responseChunkSchema)
+  .describe("An array of note segments with timestamps and content.");
+
+export type NoteSegment = z.infer<typeof responseChunkSchema>;
 
 const VIDEO_ANALYSIS_PROMPT = `
     Analyze this video for a technical lecture summary.
     I need to create structured notes for Notion.
     Identify the key topics and transitions.
     For each distinct section or key slide, provide:
-    1. The exact timestamp (in seconds) where the visual slide or key content appears.
+    1. The exact timestamp (in seconds) where the visual slide or key content appears. (These timestamps should be precise and accurate as they will be used to extract frames from the video.)
     2. A concise title for the section.
-    3. A detailed summary paragraph of the spoken content for that section.
+    3. A detailed summary paragraph of the spoken content for that section. Use markdown formatting, just like you would in a document, with:
+    - Headers
+    - Blockquotes
+    - Bullet point lists
 
     Return the response strictly as a JSON array.
     Ensure timestamps are chronological.
@@ -39,13 +63,14 @@ export async function analyzeVideoWithVertex(
 ): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
-  const visionModel = model || process.env.VERTEX_AI_MODEL || 'gemini-3-pro-preview';
+  const visionModel =
+    model || process.env.VERTEX_AI_MODEL || "gemini-3-pro-preview";
 
   // Initialize with Vertex AI backend
   const ai = new GoogleGenAI({
     vertexai: true,
-    project: project || 'my-project',
-    location: region || 'global',
+    project: project || "my-project",
+    location: region || "global",
   });
 
   const contents: ContentListUnion = [
@@ -60,6 +85,9 @@ export async function analyzeVideoWithVertex(
 
   const config: GenerateContentConfig = {
     temperature: 0.2,
+    responseMimeType: "application/json",
+    // @ts-expect-error Argument type mismatch workaround: zodToJsonSchema expects ZodType
+    responseJsonSchema: zodToJsonSchema(responseSchema),
   };
 
   const response = await ai.models.generateContent({
@@ -71,8 +99,8 @@ export async function analyzeVideoWithVertex(
   const text = response.text;
 
   if (!text) {
-    throw new Error('No response text from Vertex AI');
+    throw new Error("No response text from Vertex AI");
   }
 
-  return JSON.parse(text) as NoteSegment[];
+  return responseSchema.parse(JSON.parse(text));
 }
