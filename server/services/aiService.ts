@@ -43,6 +43,18 @@ const VIDEO_ANALYSIS_PROMPT = `
 
     Return the response strictly as a JSON array.
     Ensure timestamps are chronological.
+
+    Example response:
+    [
+      {
+        "timestamp": 10.0,
+        "title": "Introduction",
+        "markdown": "This is the introduction to the lecture."
+      },
+      ...
+    ]
+
+    IMPORTANT: Do not include any other text or comments in your response. Only return the JSON array.
   `;
 
 /**
