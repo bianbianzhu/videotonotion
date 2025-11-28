@@ -2,6 +2,7 @@ import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs';
 
+/** Information about a single video chunk */
 export interface ChunkInfo {
   id: string;
   index: number;
@@ -11,6 +12,7 @@ export interface ChunkInfo {
   duration: number;
 }
 
+/** Result of chunking a video file */
 export interface ChunkResult {
   chunks: ChunkInfo[];
   totalDuration: number;
@@ -19,6 +21,11 @@ export interface ChunkResult {
 const MAX_CHUNK_SIZE_MB = 18;
 const MAX_CHUNK_SIZE_BYTES = MAX_CHUNK_SIZE_MB * 1024 * 1024;
 
+/**
+ * Gets the duration of a video file using ffprobe.
+ * @param filePath - Path to the video file
+ * @returns Duration in seconds
+ */
 function getVideoDuration(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
@@ -31,6 +38,11 @@ function getVideoDuration(filePath: string): Promise<number> {
   });
 }
 
+/**
+ * Gets the bitrate of a video file using ffprobe.
+ * @param filePath - Path to the video file
+ * @returns Bitrate in bits per second
+ */
 function getVideoBitrate(filePath: string): Promise<number> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(filePath, (err, metadata) => {
@@ -45,6 +57,13 @@ function getVideoBitrate(filePath: string): Promise<number> {
   });
 }
 
+/**
+ * Splits a video file into smaller chunks for API upload limits.
+ * @param filePath - Path to the source video file
+ * @param sessionId - Unique session identifier
+ * @param outputDir - Directory to write chunks to
+ * @returns Chunk metadata and total duration
+ */
 export async function chunkVideo(
   filePath: string,
   sessionId: string,
@@ -103,6 +122,13 @@ export async function chunkVideo(
   };
 }
 
+/**
+ * Creates a single video chunk using ffmpeg.
+ * @param inputPath - Path to source video
+ * @param outputPath - Path to write chunk
+ * @param startTime - Start time in seconds
+ * @param duration - Chunk duration in seconds
+ */
 function createChunk(
   inputPath: string,
   outputPath: string,
@@ -125,6 +151,12 @@ function createChunk(
   });
 }
 
+/**
+ * Resolves the file path for a given chunk ID.
+ * @param sessionDir - Session directory path
+ * @param chunkId - Chunk identifier
+ * @returns Chunk file path or null if not found
+ */
 export async function getChunkPath(
   sessionDir: string,
   chunkId: string

@@ -1,5 +1,6 @@
 import { VertexAI } from '@google-cloud/vertexai';
 
+/** A single note segment extracted from video analysis */
 export interface NoteSegment {
   timestamp: number;
   title: string;
@@ -19,6 +20,15 @@ const VIDEO_ANALYSIS_PROMPT = `
     Ensure timestamps are chronological.
   `;
 
+/**
+ * Analyzes video content using Vertex AI to generate structured notes.
+ * @param projectId - Google Cloud project ID
+ * @param location - Vertex AI location (e.g., 'us-central1')
+ * @param model - Model name (e.g., 'gemini-2.0-flash')
+ * @param base64Data - Base64-encoded video data
+ * @param mimeType - Video MIME type
+ * @returns Array of note segments with timestamps and content
+ */
 export async function analyzeVideoWithVertex(
   projectId: string,
   location: string,
