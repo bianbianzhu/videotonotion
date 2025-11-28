@@ -23,11 +23,9 @@ const segmentSchema = z.object({
     ),
 });
 
-const responseSchema = z.object({
-  segments: z
-    .array(segmentSchema)
-    .describe("An array of note segments with timestamps and content."),
-});
+const responseSchema = z
+  .array(segmentSchema)
+  .describe("An array of note segments with timestamps and content.");
 
 export type NoteSegment = z.infer<typeof segmentSchema>;
 
@@ -43,7 +41,7 @@ const VIDEO_ANALYSIS_PROMPT = `
     - Blockquotes
     - Bullet point lists
 
-    Return the response strictly as a JSON object with a "segments" array.
+    Return the response strictly as a JSON array.
     Ensure timestamps are chronological.
   `;
 
@@ -104,5 +102,5 @@ export async function analyzeVideoWithVertex(
     throw new Error("No response text from Vertex AI");
   }
 
-  return responseSchema.parse(JSON.parse(text)).segments;
+  return responseSchema.parse(JSON.parse(text));
 }
