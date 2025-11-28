@@ -8,6 +8,7 @@ import { sanitizeFilename } from '../utils/urlUtils.js';
 // @ts-ignore
 const ytdlp = ytdlpBase.create('/opt/homebrew/bin/yt-dlp');
 
+/** Video metadata fetched from a URL */
 export interface VideoInfo {
   title: string;
   duration: number;
@@ -16,6 +17,7 @@ export interface VideoInfo {
   format?: string;
 }
 
+/** Result of a video download operation */
 export interface DownloadResult {
   filePath: string;
   title: string;
@@ -30,6 +32,11 @@ if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
+/**
+ * Fetches video metadata without downloading the video.
+ * @param url - The video URL to fetch info from
+ * @returns Video metadata including title, duration, and thumbnail
+ */
 export async function getVideoInfo(url: string): Promise<VideoInfo> {
   const info = await ytdlp(url, {
     dumpSingleJson: true,
@@ -46,6 +53,13 @@ export async function getVideoInfo(url: string): Promise<VideoInfo> {
   };
 }
 
+/**
+ * Downloads a video to temporary storage.
+ * @param url - The video URL to download
+ * @param sessionId - Unique session identifier for organizing downloads
+ * @param onProgress - Optional callback for download progress updates
+ * @returns Download result with file path and metadata
+ */
 export async function downloadVideo(
   url: string,
   sessionId: string,
@@ -79,6 +93,10 @@ export async function downloadVideo(
   };
 }
 
+/**
+ * Removes the session directory and all downloaded files.
+ * @param sessionId - Session to clean up
+ */
 export function cleanupSession(sessionId: string): void {
   const sessionDir = path.join(TEMP_DIR, sessionId);
   if (fs.existsSync(sessionDir)) {
