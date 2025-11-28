@@ -1,0 +1,123 @@
+import React from 'react';
+import { Key, Cloud } from 'lucide-react';
+import { AIConfig, GeminiConfig, VertexConfig } from '../services/aiProviderService';
+import { VERTEX_LOCATIONS, VERTEX_DEFAULT_LOCATION } from '../constants';
+
+interface ProviderSelectorProps {
+  config: AIConfig;
+  onChange: (config: AIConfig) => void;
+}
+
+const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange }) => {
+  const isGemini = config.provider === 'gemini';
+
+  const handleProviderChange = (provider: 'gemini' | 'vertex') => {
+    if (provider === 'gemini') {
+      onChange({
+        provider: 'gemini',
+        apiKey: '',
+      } as GeminiConfig);
+    } else {
+      onChange({
+        provider: 'vertex',
+        projectId: '',
+        location: VERTEX_DEFAULT_LOCATION,
+      } as VertexConfig);
+    }
+  };
+
+  return (
+    <div className="flex items-center space-x-3">
+      {/* Provider Toggle */}
+      <div className="flex bg-gray-100 rounded-lg p-1">
+        <button
+          onClick={() => handleProviderChange('gemini')}
+          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+            isGemini
+              ? 'bg-white shadow-sm text-gray-900'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Key className="w-4 h-4 inline mr-1" />
+          Gemini API
+        </button>
+        <button
+          onClick={() => handleProviderChange('vertex')}
+          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+            !isGemini
+              ? 'bg-white shadow-sm text-gray-900'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Cloud className="w-4 h-4 inline mr-1" />
+          Vertex AI
+        </button>
+      </div>
+
+      {/* Gemini Config */}
+      {isGemini && (
+        <div
+          className={`flex items-center px-3 py-1.5 rounded-lg border ${
+            !(config as GeminiConfig).apiKey
+              ? 'border-red-300 bg-red-50'
+              : 'border-gray-200 bg-gray-50'
+          }`}
+        >
+          <Key className="w-4 h-4 text-gray-400 mr-2" />
+          <input
+            type="password"
+            placeholder="Gemini API Key"
+            value={(config as GeminiConfig).apiKey || ''}
+            onChange={(e) =>
+              onChange({
+                ...config,
+                apiKey: e.target.value,
+              } as GeminiConfig)
+            }
+            className="text-sm bg-transparent border-none focus:ring-0 w-40 placeholder-gray-400"
+          />
+        </div>
+      )}
+
+      {/* Vertex Config */}
+      {!isGemini && (
+        <div className="flex items-center space-x-2">
+          <input
+            type="text"
+            placeholder="Project ID"
+            value={(config as VertexConfig).projectId || ''}
+            onChange={(e) =>
+              onChange({
+                ...config,
+                projectId: e.target.value,
+              } as VertexConfig)
+            }
+            className={`text-sm px-3 py-1.5 rounded-lg border ${
+              !(config as VertexConfig).projectId
+                ? 'border-red-300 bg-red-50'
+                : 'border-gray-200 bg-gray-50'
+            } w-36 placeholder-gray-400`}
+          />
+          <select
+            value={(config as VertexConfig).location || VERTEX_DEFAULT_LOCATION}
+            onChange={(e) =>
+              onChange({
+                ...config,
+                location: e.target.value,
+              } as VertexConfig)
+            }
+            className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50"
+          >
+            {VERTEX_LOCATIONS.map((loc) => (
+              <option key={loc} value={loc}>
+                {loc}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default ProviderSelector;

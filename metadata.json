@@ -1,0 +1,5 @@
+{
+  "name": "VideoToNotion",
+  "description": "Convert video content into structured, illustrated notes for Notion.",
+  "requestFramePermissions": []
+}
