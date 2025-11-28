@@ -10,7 +10,7 @@ import {
 } from '../services/ytdlpService.js';
 import { chunkVideo, getChunkPath } from '../services/chunkService.js';
 
-const router = Router();
+const router: Router = Router();
 
 // Store active sessions (in production, use Redis or similar)
 const sessions = new Map<

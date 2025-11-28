@@ -1,8 +1,12 @@
-import ytdlp from 'yt-dlp-exec';
+import ytdlpBase from 'yt-dlp-exec';
 import path from 'path';
 import os from 'os';
 import fs from 'fs';
 import { sanitizeFilename } from '../utils/urlUtils.js';
+
+// Use system-installed yt-dlp binary
+// @ts-ignore
+const ytdlp = ytdlpBase.create('/opt/homebrew/bin/yt-dlp');
 
 export interface VideoInfo {
   title: string;
