@@ -18,7 +18,7 @@ router.post('/vertex/analyze', async (req: Request, res: Response) => {
     const segments = await analyzeVideoWithVertex(
       projectId,
       location,
-      model || 'gemini-2.0-flash',
+      model || 'gemini-3.0-pro',
       base64Data,
       mimeType
     );
