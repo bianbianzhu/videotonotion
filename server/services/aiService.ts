@@ -23,7 +23,7 @@ const VIDEO_ANALYSIS_PROMPT = `
 /**
  * Analyzes video content using Vertex AI to generate structured notes.
  * @param projectId - Google Cloud project ID
- * @param location - Vertex AI location (e.g., 'us-central1')
+ * @param region - Vertex AI region (e.g., 'us-central1')
  * @param model - Model name (e.g., 'gemini-2.0-flash')
  * @param base64Data - Base64-encoded video data
  * @param mimeType - Video MIME type
@@ -31,18 +31,23 @@ const VIDEO_ANALYSIS_PROMPT = `
  */
 export async function analyzeVideoWithVertex(
   projectId: string,
-  location: string,
+  region: string,
   model: string,
   base64Data: string,
   mimeType: string
 ): Promise<NoteSegment[]> {
+
+  const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
+  const location = region || process.env.VERTEX_AI_LOCATION;
+  const visionModel = model || process.env.VERTEX_AI_MODEL || 'gemini-3-pro';
+
   const vertexAI = new VertexAI({
-    project: projectId,
-    location: location,
+    project,
+    location,
   });
 
   const generativeModel = vertexAI.getGenerativeModel({
-    model: model,
+    model: visionModel,
   });
 
   const response = await generativeModel.generateContent({

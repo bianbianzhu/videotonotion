@@ -19,15 +19,16 @@ import {
 const simpleId = () => Math.random().toString(36).substr(2, 9);
 const STORAGE_KEY = 'videotonotion_sessions';
 
-/** Serializes completed sessions for localStorage (excludes non-serializable fields) */
+/** Serializes sessions for localStorage (excludes non-serializable fields) */
 function serializeSessions(sessions: VideoSession[]): string {
-  const completedSessions = sessions
-    .filter((s) => s.status === ProcessingStatus.COMPLETED)
+  // Persist sessions that have reached READY state (download complete) or beyond
+  const persistableSessions = sessions
+    .filter((s) => s.status === ProcessingStatus.READY || s.status === ProcessingStatus.COMPLETED)
     .map(({ file, ...rest }) => ({
       ...rest,
       date: rest.date instanceof Date ? rest.date.toISOString() : rest.date,
     }));
-  return JSON.stringify(completedSessions);
+  return JSON.stringify(persistableSessions);
 }
 
 /** Deserializes sessions from localStorage */

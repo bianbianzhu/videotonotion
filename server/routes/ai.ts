@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { analyzeVideoWithVertex } from '../services/aiService.js';
 
-const router = Router();
+const router: Router = Router();
 
 // POST /api/ai/vertex/analyze - Analyze video with Vertex AI
 router.post('/vertex/analyze', async (req: Request, res: Response) => {
