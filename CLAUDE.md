@@ -2,6 +2,8 @@
 
 Read and understand relevant files before proposing edits. Don't speculate about the code if you haven't read the files.
 
+ALWAYS use gemini-3.0-pro as the model
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Commands
