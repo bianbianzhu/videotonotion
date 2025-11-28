@@ -9,7 +9,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 
 /** A single note segment extracted from video analysis */
 
-const responseChunkSchema = z.object({
+const segmentSchema = z.object({
   timestamp: z
     .number()
     .describe(
@@ -19,15 +19,17 @@ const responseChunkSchema = z.object({
   markdown: z
     .string()
     .describe(
-      "A detailed summary paragraph of the spoken content for that section. Use markdown formatting"
+      "Field 'markdown': A detailed markdown-formatted content paragraph of the spoken content for that section."
     ),
 });
 
-const responseSchema = z
-  .array(responseChunkSchema)
-  .describe("An array of note segments with timestamps and content.");
+const responseSchema = z.object({
+  segments: z
+    .array(segmentSchema)
+    .describe("An array of note segments with timestamps and content."),
+});
 
-export type NoteSegment = z.infer<typeof responseChunkSchema>;
+export type NoteSegment = z.infer<typeof segmentSchema>;
 
 const VIDEO_ANALYSIS_PROMPT = `
     Analyze this video for a technical lecture summary.
@@ -36,12 +38,12 @@ const VIDEO_ANALYSIS_PROMPT = `
     For each distinct section or key slide, provide:
     1. The exact timestamp (in seconds) where the visual slide or key content appears. (These timestamps should be precise and accurate as they will be used to extract frames from the video.)
     2. A concise title for the section.
-    3. A detailed summary paragraph of the spoken content for that section. Use markdown formatting, just like you would in a document, with:
+    3. A detailed content paragraph in the "markdown" field of the spoken content for that section. Use markdown formatting, just like you would in a document, with:
     - Headers
     - Blockquotes
     - Bullet point lists
 
-    Return the response strictly as a JSON array.
+    Return the response strictly as a JSON object with a "segments" array.
     Ensure timestamps are chronological.
   `;
 
@@ -102,5 +104,5 @@ export async function analyzeVideoWithVertex(
     throw new Error("No response text from Vertex AI");
   }
 
-  return responseSchema.parse(JSON.parse(text));
+  return responseSchema.parse(JSON.parse(text)).segments;
 }
