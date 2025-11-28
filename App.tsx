@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Sparkles } from 'lucide-react';
 import VideoInput from './components/VideoInput';
 import ProcessingView from './components/ProcessingView';
@@ -17,11 +17,52 @@ import {
 } from './services/youtubeApiService';
 
 const simpleId = () => Math.random().toString(36).substr(2, 9);
+const STORAGE_KEY = 'videotonotion_sessions';
+
+/** Serializes completed sessions for localStorage (excludes non-serializable fields) */
+function serializeSessions(sessions: VideoSession[]): string {
+  const completedSessions = sessions
+    .filter((s) => s.status === ProcessingStatus.COMPLETED)
+    .map(({ file, ...rest }) => ({
+      ...rest,
+      date: rest.date instanceof Date ? rest.date.toISOString() : rest.date,
+    }));
+  return JSON.stringify(completedSessions);
+}
+
+/** Deserializes sessions from localStorage */
+function deserializeSessions(json: string): VideoSession[] {
+  const parsed = JSON.parse(json);
+  return parsed.map((s: any) => ({
+    ...s,
+    date: new Date(s.date),
+  }));
+}
 
 const App: React.FC = () => {
   const [aiConfig, setAiConfig] = useState<AIConfig>(getDefaultConfig());
-  const [sessions, setSessions] = useState<VideoSession[]>([]);
+  const [sessions, setSessions] = useState<VideoSession[]>(() => {
+    // Load completed sessions from localStorage on initial render
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+        return deserializeSessions(saved);
+      }
+    } catch (e) {
+      console.warn('Failed to load sessions from localStorage:', e);
+    }
+    return [];
+  });
   const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Save completed sessions to localStorage whenever sessions change
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, serializeSessions(sessions));
+    } catch (e) {
+      console.warn('Failed to save sessions to localStorage:', e);
+    }
+  }, [sessions]);
 
   // Derived state
   const selectedSession = sessions.find((s) => s.id === selectedId);
@@ -31,6 +72,23 @@ const App: React.FC = () => {
 
   const handleAddNew = () => {
     setSelectedId(null);
+  };
+
+  const handleDeleteSession = async (id: string) => {
+    const session = sessions.find((s) => s.id === id);
+
+    // Cleanup backend YouTube session if exists
+    if (session?.youtubeSessionId) {
+      cleanupYouTubeSession(session.youtubeSessionId).catch(console.error);
+    }
+
+    // Remove from state (and localStorage via useEffect)
+    setSessions((prev) => prev.filter((s) => s.id !== id));
+
+    // Deselect if this was the selected session
+    if (selectedId === id) {
+      setSelectedId(null);
+    }
   };
 
   const handleImportUrl = async (url: string) => {
@@ -203,6 +261,7 @@ const App: React.FC = () => {
         selectedId={selectedId}
         onSelect={setSelectedId}
         onAddNew={handleAddNew}
+        onDelete={handleDeleteSession}
       />
 
       {/* Main Content Area */}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Play, FileVideo, Clock, Plus, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react';
+import { FileVideo, Clock, Plus, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react';
 import { VideoSession, ProcessingStatus } from '../types';
 
 interface SidebarProps {
@@ -7,9 +7,10 @@ interface SidebarProps {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onAddNew: () => void;
+  onDelete: (id: string) => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ sessions, selectedId, onSelect, onAddNew }) => {
+const Sidebar: React.FC<SidebarProps> = ({ sessions, selectedId, onSelect, onAddNew, onDelete }) => {
   return (
     <div className="w-80 bg-[#F7F7F5] border-r border-gray-200 h-screen flex flex-col flex-shrink-0">
       <div className="p-4 border-b border-gray-200 flex items-center justify-between">
@@ -46,7 +47,7 @@ const Sidebar: React.FC<SidebarProps> = ({ sessions, selectedId, onSelect, onAdd
             `}
           >
             <div className="flex items-start justify-between">
-              <div className="flex items-center space-x-3 overflow-hidden">
+              <div className="flex items-center space-x-3 overflow-hidden flex-1">
                 <div className={`
                   w-8 h-8 rounded flex-shrink-0 flex items-center justify-center
                   ${session.status === ProcessingStatus.COMPLETED ? 'bg-green-100 text-green-600' : 'bg-gray-200 text-gray-500'}
@@ -68,6 +69,16 @@ const Sidebar: React.FC<SidebarProps> = ({ sessions, selectedId, onSelect, onAdd
                   </div>
                 </div>
               </div>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(session.id);
+                }}
+                className="p-1.5 opacity-0 group-hover:opacity-100 hover:bg-red-100 rounded transition-all text-gray-400 hover:text-red-600"
+                title="Delete session"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
             </div>
 
             {/* Status Bar */}

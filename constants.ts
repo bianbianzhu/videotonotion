@@ -19,4 +19,5 @@ export const VERTEX_LOCATIONS = [
   "asia-east1",
   "asia-northeast1",
   "asia-southeast1",
+  "global"
 ];
