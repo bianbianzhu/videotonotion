@@ -163,7 +163,13 @@ export async function getChunkPath(
 ): Promise<string | null> {
   const chunkPath = path.join(sessionDir, `${chunkId}.mp4`);
 
-  // Check if it's the original file (chunk-0 for small videos)
+  // First: check if actual chunk file exists
+  if (fs.existsSync(chunkPath)) {
+    return chunkPath;
+  }
+
+  // Fallback for small videos where no chunking was performed:
+  // chunk-0 maps to the original file
   if (chunkId === 'chunk-0') {
     const files = fs.readdirSync(sessionDir);
     const mp4File = files.find(f => f.endsWith('.mp4') && !f.startsWith('chunk-'));
@@ -173,10 +179,6 @@ export async function getChunkPath(
         return originalPath;
       }
     }
-  }
-
-  if (fs.existsSync(chunkPath)) {
-    return chunkPath;
   }
 
   return null;
