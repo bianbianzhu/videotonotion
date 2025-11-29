@@ -1,20 +1,104 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
-</div>
+# Video to Notion
 
-# Run and deploy your AI Studio app
+A React application that converts video lectures into structured, Notion-ready notes using Google's Gemini AI multimodal capabilities.
 
-This contains everything you need to run your app locally.
+## Features
 
-View your app in AI Studio: https://ai.studio/apps/drive/1UKBbNxTm4kCPYhJRfnqb4pAMrNAHSn4v
+- **Video File Upload** - Upload local video files for analysis
+- **YouTube URL Support** - Paste YouTube URLs for server-side processing
+- **AI-Powered Analysis** - Uses Gemini AI to analyze video content and generate structured notes
+- **Frame Extraction** - Automatically extracts key frames at identified timestamps
+- **Markdown Output** - Generates Notion-compatible markdown with timestamps, titles, and summaries
+- **Session Management** - Track multiple video processing sessions with progress indicators
 
-## Run Locally
+## Tech Stack
 
-**Prerequisites:**  Node.js
+- **Frontend**: React 19, Vite, TypeScript
+- **AI**: Google Gemini API (@google/genai)
+- **Backend**: Express.js server for YouTube video handling
+- **Icons**: Lucide React
 
+## Prerequisites
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Run the app:
-   `npm run dev`
+- Node.js (v18+)
+- pnpm
+- Gemini API key can be provided via frontend or in the environment variables
+- Vertex AI project ID, region, and model can be provided via frontend or in the environment variables
+
+## Setup
+
+1. Install all dependencies:
+
+   ```bash
+   pnpm run install:all
+   ```
+
+2. Install ffmpeg and yt-dlp:
+   For macOS:
+
+   ```bash
+   brew install yt-dlp
+   brew install ffmpeg
+   ```
+
+3. (Optional)Create `.env.local` in the project root and add your Gemini API key or Vertex AI project ID, region, and model:
+
+   ```
+   GEMINI_API_KEY=your_api_key_here
+   VERTEX_AI_PROJECT_ID=your_project_id_here
+   VERTEX_AI_LOCATION=your_location_here
+   VERTEX_AI_MODEL=your_model_here
+   ```
+
+4. For YouTube support, configure the server environment in `server/.env`
+
+## Development
+
+Start both the client and server:
+
+```bash
+pnpm run dev
+```
+
+This runs:
+
+- Frontend on http://localhost:5173
+- Backend server for YouTube processing
+
+### Individual Commands
+
+- `pnpm run dev:client` - Start only the Vite dev server
+- `pnpm run dev:server` - Start only the backend server
+- `pnpm run build` - Production build
+- `pnpm run preview` - Preview production build
+
+## How It Works
+
+1. **Input** - Upload a video file or provide a YouTube URL
+2. **Processing** - Video is sent to Gemini AI for multimodal analysis
+3. **Analysis** - AI identifies key segments with timestamps and generates summaries
+4. **Frame Extraction** - Key frames are extracted at identified timestamps using HTML5 canvas
+5. **Output** - Structured notes with timestamps, titles, markdown content, and images
+
+## Project Structure
+
+```
+├── App.tsx              # Main application component
+├── components/          # React components
+│   ├── NotesPreview.tsx    # Rendered notes display
+│   ├── ProcessingView.tsx  # Progress indicators
+│   ├── Sidebar.tsx         # Session management
+│   └── VideoInput.tsx      # Upload interface
+├── services/            # API integrations
+│   ├── geminiService.ts    # Gemini AI client
+│   └── youtubeApiService.ts # YouTube API calls
+├── server/              # Backend Express server
+│   ├── routes/             # API routes
+│   └── services/           # Server-side services
+├── types.ts             # TypeScript interfaces
+└── utils/               # Utility functions
+```
+
+## License
+
+MIT
