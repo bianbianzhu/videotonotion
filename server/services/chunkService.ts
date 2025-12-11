@@ -18,7 +18,9 @@ export interface ChunkResult {
   totalDuration: number;
 }
 
-const MAX_CHUNK_SIZE_MB = 18;
+// Chunk size is configurable via CHUNK_SIZE_MB env var (default: 10MB)
+// Smaller chunks = fewer tokens per API request = less likely to hit rate limits
+const MAX_CHUNK_SIZE_MB = parseInt(process.env.CHUNK_SIZE_MB || '10', 10);
 const MAX_CHUNK_SIZE_BYTES = MAX_CHUNK_SIZE_MB * 1024 * 1024;
 
 /**
