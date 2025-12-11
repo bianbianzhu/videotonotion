@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import youtubeRouter from './routes/youtube.js';
 import aiRouter from './routes/ai.js';
+import uploadRouter from './routes/upload.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -16,6 +17,7 @@ app.use(express.json({ limit: '100mb' })); // Increased limit for video data
 // Routes
 app.use('/api/youtube', youtubeRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api/upload', uploadRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -36,5 +38,10 @@ app.listen(PORT, () => {
   console.log('  GET  /api/youtube/chunk/:sessionId/:chunkId');
   console.log('  GET  /api/youtube/full/:sessionId');
   console.log('  DELETE /api/youtube/session/:sessionId');
+  console.log('  POST /api/upload');
+  console.log('  GET  /api/upload/chunk/:sessionId/:chunkId');
+  console.log('  GET  /api/upload/full/:sessionId');
+  console.log('  GET  /api/upload/frame/:sessionId?timestamp=...');
+  console.log('  DELETE /api/upload/session/:sessionId');
   console.log('  POST /api/ai/vertex/analyze');
 });

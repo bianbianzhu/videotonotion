@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, Link as LinkIcon, ArrowRight, FileVideo } from 'lucide-react';
-import { MAX_VIDEO_SIZE_MB } from '../constants';
+import { MAX_VIDEO_SIZE_MB, CHUNK_SIZE_THRESHOLD_MB } from '../constants';
 
 interface VideoInputProps {
   onImport: (url: string) => void;
@@ -101,6 +101,7 @@ const VideoInput: React.FC<VideoInputProps> = ({ onImport, onUpload, isLoading }
               </div>
               <p className="text-gray-900 font-medium">Click to upload video</p>
               <p className="text-gray-500 text-sm mt-1">MP4, WebM up to {MAX_VIDEO_SIZE_MB}MB</p>
+              <p className="text-gray-400 text-xs mt-1">Files over {CHUNK_SIZE_THRESHOLD_MB}MB will be split into chunks</p>
             </div>
           )}
         </div>

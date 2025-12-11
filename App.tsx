@@ -5,7 +5,7 @@ import ProcessingView from './components/ProcessingView';
 import NotesPreview from './components/NotesPreview';
 import Sidebar from './components/Sidebar';
 import ProviderSelector from './components/ProviderSelector';
-import { NoteSegment, ProcessingStatus, VideoSession } from './types';
+import { NoteSegment, ProcessingStatus, VideoSession, ChunkContext } from './types';
 import { createAIProvider, AIConfig, isConfigValid, getDefaultConfig } from './services/aiProviderService';
 import { fileToBase64, extractFrameFromVideo } from './utils/videoUtils';
 import {
@@ -16,6 +16,14 @@ import {
   cleanupSession as cleanupYouTubeSession,
   extractFrameFromServer,
 } from './services/youtubeApiService';
+import {
+  uploadVideoForChunking,
+  fetchUploadedChunk,
+  getUploadedVideoUrl,
+  cleanupUploadSession,
+  extractFrameFromUpload,
+} from './services/uploadApiService';
+import { CHUNK_SIZE_THRESHOLD_MB } from './constants';
 
 const simpleId = () => Math.random().toString(36).substr(2, 9);
 const STORAGE_KEY = 'videotonotion_sessions';
@@ -86,6 +94,11 @@ const App: React.FC = () => {
       cleanupYouTubeSession(session.youtubeSessionId).catch(console.error);
     }
 
+    // Cleanup backend upload session if exists
+    if (session?.uploadSessionId) {
+      cleanupUploadSession(session.uploadSessionId).catch(console.error);
+    }
+
     // Remove from state (and localStorage via useEffect)
     setSessions((prev) => prev.filter((s) => s.id !== id));
 
@@ -146,16 +159,55 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUploadFile = (file: File) => {
+  const handleUploadFile = async (file: File) => {
+    const chunkThresholdBytes = CHUNK_SIZE_THRESHOLD_MB * 1024 * 1024;
+
+    // For small files, use direct processing (no backend upload)
+    if (file.size <= chunkThresholdBytes) {
+      const newSession: VideoSession = {
+        id: simpleId(),
+        title: file.name,
+        file: file,
+        date: new Date(),
+        status: ProcessingStatus.READY,
+      };
+      setSessions((prev) => [newSession, ...prev]);
+      setSelectedId(newSession.id);
+      return;
+    }
+
+    // For large files, upload to backend for chunking
     const newSession: VideoSession = {
       id: simpleId(),
       title: file.name,
-      file: file,
       date: new Date(),
-      status: ProcessingStatus.READY,
+      status: ProcessingStatus.UPLOADING,
+      progress: 0,
     };
+
     setSessions((prev) => [newSession, ...prev]);
     setSelectedId(newSession.id);
+
+    try {
+      const result = await uploadVideoForChunking(file, (progress) => {
+        updateSession(newSession.id, { progress });
+      });
+
+      updateSession(newSession.id, {
+        title: result.title || file.name,
+        uploadSessionId: result.sessionId,
+        chunks: result.chunks,
+        totalDuration: result.duration,
+        status: ProcessingStatus.READY,
+        progress: 100,
+      });
+    } catch (err: any) {
+      console.error('Upload error:', err);
+      updateSession(newSession.id, {
+        status: ProcessingStatus.ERROR,
+        error: err.message || 'Could not upload video for processing.',
+      });
+    }
   };
 
   const handleProcessSession = async () => {
@@ -172,6 +224,10 @@ const App: React.FC = () => {
       if (selectedSession.chunks && selectedSession.youtubeSessionId) {
         // YouTube video with chunks - process each chunk
         const chunks = selectedSession.chunks;
+        let previousTopics: string[] = [];
+
+        // Calculate total duration from last chunk's end time
+        const totalDuration = selectedSession.totalDuration || (chunks.length > 0 ? chunks[chunks.length - 1].endTime : 0);
 
         for (let i = 0; i < chunks.length; i++) {
           const chunk = chunks[i];
@@ -186,8 +242,21 @@ const App: React.FC = () => {
           const chunkBlob = await fetchChunk(selectedSession.youtubeSessionId, chunk.id);
           const base64Data = await fileToBase64(chunkBlob as File);
 
-          // Process with AI provider
-          const segments = await provider.generateNotesFromVideo(base64Data, 'video/mp4');
+          // Build chunk context for AI
+          const chunkContext: ChunkContext = {
+            chunkNumber: i + 1,
+            totalChunks: chunks.length,
+            chunkStartTime: chunk.startTime,
+            chunkEndTime: chunk.endTime,
+            totalDuration,
+            previousTopics: i > 0 ? previousTopics : undefined,
+          };
+
+          // Process with AI provider (with chunk context)
+          const segments = await provider.generateNotesFromVideo(base64Data, 'video/mp4', chunkContext);
+
+          // Extract topics for next chunk's context
+          previousTopics = segments.map((s) => s.title);
 
           // Adjust timestamps based on chunk start time
           const adjustedSegments = segments.map((s) => ({
@@ -200,6 +269,53 @@ const App: React.FC = () => {
 
         // Use full video URL for frame extraction
         videoUrlForFrames = getFullVideoUrl(selectedSession.youtubeSessionId);
+      } else if (selectedSession.chunks && selectedSession.uploadSessionId) {
+        // Uploaded local video with chunks - process each chunk
+        const chunks = selectedSession.chunks;
+        let previousTopics: string[] = [];
+
+        const totalDuration = selectedSession.totalDuration || (chunks.length > 0 ? chunks[chunks.length - 1].endTime : 0);
+
+        for (let i = 0; i < chunks.length; i++) {
+          const chunk = chunks[i];
+
+          updateSession(selectedSession.id, {
+            status: ProcessingStatus.ANALYZING,
+            currentChunk: i + 1,
+            progress: Math.round((i / chunks.length) * 100),
+          });
+
+          // Fetch chunk from backend
+          const chunkBlob = await fetchUploadedChunk(selectedSession.uploadSessionId, chunk.id);
+          const base64Data = await fileToBase64(chunkBlob as File);
+
+          // Build chunk context for AI
+          const chunkContext: ChunkContext = {
+            chunkNumber: i + 1,
+            totalChunks: chunks.length,
+            chunkStartTime: chunk.startTime,
+            chunkEndTime: chunk.endTime,
+            totalDuration,
+            previousTopics: i > 0 ? previousTopics : undefined,
+          };
+
+          // Process with AI provider (with chunk context)
+          const segments = await provider.generateNotesFromVideo(base64Data, 'video/mp4', chunkContext);
+
+          // Extract topics for next chunk's context
+          previousTopics = segments.map((s) => s.title);
+
+          // Adjust timestamps based on chunk start time
+          const adjustedSegments = segments.map((s) => ({
+            ...s,
+            timestamp: s.timestamp + chunk.startTime,
+          }));
+
+          allSegments.push(...adjustedSegments);
+        }
+
+        // Use full video URL for frame extraction
+        videoUrlForFrames = getUploadedVideoUrl(selectedSession.uploadSessionId);
       } else if (selectedSession.file) {
         // Direct upload - single file processing
         const file = selectedSession.file as File;
@@ -223,8 +339,11 @@ const App: React.FC = () => {
           if (selectedSession.youtubeSessionId) {
             // Use server-side ffmpeg for YouTube videos (more reliable)
             frameData = await extractFrameFromServer(selectedSession.youtubeSessionId, segment.timestamp);
+          } else if (selectedSession.uploadSessionId) {
+            // Use server-side ffmpeg for uploaded chunked videos
+            frameData = await extractFrameFromUpload(selectedSession.uploadSessionId, segment.timestamp);
           } else {
-            // Use browser-side extraction for direct uploads
+            // Use browser-side extraction for small direct uploads
             frameData = await extractFrameFromVideo(videoUrlForFrames, segment.timestamp);
           }
           enrichedSegments.push({ ...segment, image: frameData });
@@ -235,7 +354,7 @@ const App: React.FC = () => {
       }
 
       // Cleanup blob URL for direct uploads
-      if (!selectedSession.youtubeSessionId && videoUrlForFrames.startsWith('blob:')) {
+      if (!selectedSession.youtubeSessionId && !selectedSession.uploadSessionId && videoUrlForFrames.startsWith('blob:')) {
         URL.revokeObjectURL(videoUrlForFrames);
       }
 
@@ -305,17 +424,21 @@ const App: React.FC = () => {
           {/* Case 2: Session Selected */}
           {selectedSession && (
             <div className="max-w-4xl mx-auto py-10 px-8">
-              {/* Status: Downloading or Error */}
+              {/* Status: Downloading/Uploading or Error */}
               {(selectedSession.status === ProcessingStatus.DOWNLOADING ||
+                (selectedSession.status === ProcessingStatus.UPLOADING && !selectedSession.chunks) ||
                 selectedSession.status === ProcessingStatus.ERROR) && (
                 <div className="text-center py-20">
-                  {selectedSession.status === ProcessingStatus.DOWNLOADING && (
+                  {(selectedSession.status === ProcessingStatus.DOWNLOADING ||
+                    (selectedSession.status === ProcessingStatus.UPLOADING && !selectedSession.chunks)) && (
                     <div className="flex flex-col items-center">
                       <ProcessingView status={ProcessingStatus.UPLOADING} />
                       <p className="mt-4 text-gray-500">
-                        {isYouTubeUrl(selectedSession.url || '')
-                          ? 'Downloading YouTube video...'
-                          : 'Downloading video...'}
+                        {selectedSession.status === ProcessingStatus.DOWNLOADING
+                          ? isYouTubeUrl(selectedSession.url || '')
+                            ? 'Downloading YouTube video...'
+                            : 'Downloading video...'
+                          : 'Uploading video for processing...'}
                       </p>
                       {selectedSession.progress !== undefined && selectedSession.progress > 0 && (
                         <div className="w-64 bg-gray-200 rounded-full h-2 mt-2">

@@ -1,5 +1,6 @@
 export const GEMINI_MODEL = "gemini-3-pro-preview";
-export const MAX_VIDEO_SIZE_MB = 20; // Client-side API limit safety
+export const MAX_VIDEO_SIZE_MB = 500; // Max upload size for backend chunking
+export const CHUNK_SIZE_THRESHOLD_MB = 18; // Videos larger than this get chunked
 
 // Vertex AI defaults
 export const VERTEX_DEFAULT_MODEL = "gemini-3-pro-preview";
