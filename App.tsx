@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Play, Sparkles } from 'lucide-react';
 import VideoInput from './components/VideoInput';
 import ProcessingView from './components/ProcessingView';
@@ -243,7 +243,7 @@ const App: React.FC = () => {
           updateSession(selectedSession.id, {
             status: ProcessingStatus.ANALYZING,
             currentChunk: i + 1,
-            progress: Math.round((i / chunks.length) * 100),
+            progress: Math.round(((i + 1) / chunks.length) * 100),
           });
 
           // Fetch chunk from backend
@@ -290,7 +290,7 @@ const App: React.FC = () => {
           updateSession(selectedSession.id, {
             status: ProcessingStatus.ANALYZING,
             currentChunk: i + 1,
-            progress: Math.round((i / chunks.length) * 100),
+            progress: Math.round(((i + 1) / chunks.length) * 100),
           });
 
           // Fetch chunk from backend
@@ -448,7 +448,7 @@ const App: React.FC = () => {
         <main className="flex-1 overflow-y-auto bg-white relative">
           {/* Case 1: No Session Selected (New) */}
           {!selectedSession && (
-            <VideoInput onImport={handleImportUrl} onUpload={handleUploadFile} isLoading={false} />
+            <VideoInput onImport={handleImportUrl} onUpload={handleUploadFile} isLoading={isLoading} />
           )}
 
           {/* Case 2: Session Selected */}
