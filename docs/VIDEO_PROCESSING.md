@@ -136,8 +136,8 @@ Large videos are split into chunks to work within Gemini's video length limits.
 
 | Setting | Default | Environment Variable |
 |---------|---------|---------------------|
-| Chunk Size Target | 10MB | `CHUNK_SIZE_MB` (backend) |
-| Frontend Threshold | 10MB | `VITE_CHUNK_SIZE_MB` (frontend) |
+| Chunk Size Target | 15MB | `CHUNK_SIZE_MB` (backend) |
+| Frontend Threshold | 15MB | `VITE_CHUNK_SIZE_MB` (frontend) |
 | Chunk Duration | Calculated based on bitrate | - |
 | Min Chunks | 1 | - |
 | Max Video Length | 45 min (with audio) | - |

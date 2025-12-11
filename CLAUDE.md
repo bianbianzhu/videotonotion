@@ -46,7 +46,7 @@ GEMINI_API_KEY=your_api_key          # Optional - can be set in UI
 VITE_VERTEX_AI_PROJECT_ID=project    # Optional - for Vertex AI
 VITE_VERTEX_AI_LOCATION=us-central1  # Optional
 VITE_VERTEX_AI_MODEL=gemini-3-pro-preview
-VITE_CHUNK_SIZE_MB=10                # Optional - chunk threshold (default: 10)
+VITE_CHUNK_SIZE_MB=15                # Optional - chunk threshold (default: 15)
 ```
 
 ### Backend (`server/.env`)
@@ -56,7 +56,7 @@ PORT=3001                            # Server port (default: 3001)
 VERTEX_AI_PROJECT_ID=your_project    # Required for Vertex AI
 VERTEX_AI_LOCATION=us-central1       # Required for Vertex AI
 VERTEX_AI_MODEL=gemini-3-pro-preview # Optional
-CHUNK_SIZE_MB=10                     # Optional - video chunk size (default: 10)
+CHUNK_SIZE_MB=15                     # Optional - video chunk size (default: 15)
 ```
 
 > **Note:** Smaller chunk sizes (e.g., 5-10MB) reduce tokens per API request, helping avoid 429 rate limit errors.

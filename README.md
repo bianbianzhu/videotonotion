@@ -162,7 +162,7 @@ videotonotion/
 ## Data Persistence
 
 - **Session History**: Stored in SQLite database (`server/data/videotonotion.db`)
-- **Note Images**: Saved to filesystem (`server/data/images/`) and served via API
+- **Note Images (Screenshots)**: Saved to filesystem (`server/data/images/`) and served via API
 - **Server Downloads**: Stored in temp directory, auto-cleaned after 1 hour
 - **Migration**: Existing localStorage data is automatically migrated on first load
 
