@@ -66,7 +66,8 @@ flowchart TB
     end
 
     subgraph Storage["Storage"]
-        LS[(localStorage)]
+        DB[(SQLite DB)]
+        IMG[(Image Files)]
         TMP[(Temp Files)]
     end
 
@@ -86,7 +87,8 @@ flowchart TB
     YT -->|Download| YTB
     AI -->|Auth Proxy| VTX
 
-    UI -->|Save Sessions| LS
+    EX -->|Save Sessions| DB
+    EX -->|Save Images| IMG
     YT -->|Store Videos| TMP
     CH -->|Store Chunks| TMP
 ```
@@ -168,6 +170,7 @@ stateDiagram-v2
 | Framework | Express.js | HTTP server and routing |
 | Runtime | Node.js | JavaScript runtime |
 | Language | TypeScript | Type safety |
+| Database | better-sqlite3 | SQLite for session persistence |
 | Video Download | yt-dlp | YouTube video downloading |
 | Video Processing | ffmpeg | Video chunking and frame extraction |
 | Validation | Zod | Request/response validation |
@@ -179,13 +182,22 @@ server/
 ├── index.ts                # Express server entry point
 ├── routes/
 │   ├── youtube.ts          # YouTube download/chunk endpoints
-│   └── ai.ts               # Vertex AI proxy endpoint
+│   ├── ai.ts               # Vertex AI proxy endpoint
+│   └── sessions.ts         # Session CRUD endpoints
 ├── services/
 │   ├── ytdlpService.ts     # yt-dlp wrapper for downloads
 │   ├── chunkService.ts     # ffmpeg video chunking
-│   └── aiService.ts        # Vertex AI integration
+│   ├── aiService.ts        # Vertex AI integration
+│   └── imageStorageService.ts # Image file operations
+├── db/
+│   ├── index.ts            # SQLite connection setup
+│   ├── schema.ts           # Database schema definitions
+│   └── sessionRepository.ts # Data access layer
 ├── utils/
 │   └── urlUtils.ts         # URL validation utilities
+├── data/                   # (gitignored) Runtime data
+│   ├── videotonotion.db    # SQLite database file
+│   └── images/             # Stored note images
 ├── package.json
 ├── tsconfig.json
 └── VIDEO_REQUIREMENTS.md   # Gemini video constraints
@@ -268,27 +280,45 @@ classDiagram
 
 ## Storage Architecture
 
-### Client-Side Storage (localStorage)
+### Database Storage (SQLite + Filesystem)
+
+The application uses a hybrid storage approach:
+- **SQLite database** for session metadata and note content
+- **Filesystem** for note images (stored as JPEG files)
 
 ```mermaid
-flowchart LR
-    subgraph Browser
-        A[VideoSession State]
-        B[localStorage]
+flowchart TB
+    subgraph Frontend
+        A[React App]
     end
 
-    A -->|Serialize| B
-    B -->|Deserialize| A
+    subgraph Backend
+        B[Express Server]
+        C[Session API]
+    end
 
-    note1[Key: videotonotion_sessions]
-    note2[Images stripped to save space]
+    subgraph Storage["server/data/"]
+        D[(videotonotion.db)]
+        E[images/]
+    end
+
+    A -->|REST API| B
+    B --> C
+    C -->|Read/Write| D
+    C -->|Save/Serve| E
 ```
 
+**Database Schema:**
+- **sessions**: Session metadata (id, title, url, status, dates)
+- **chunks**: Video chunk info for large files
+- **notes**: Note segments (timestamp, title, markdown, image_path)
+
 **Storage Details:**
-- **Key**: `videotonotion_sessions`
-- **Capacity**: ~5-10MB (browser limit)
-- **Persistence**: Until manual clear or browser data deletion
-- **Limitations**: Images are stripped from saved notes to conserve space
+- **Location**: `server/data/videotonotion.db`
+- **Images**: `server/data/images/{sessionId}/note-{index}.jpg`
+- **Persistence**: Permanent until deleted via API
+- **Migration**: Auto-migrates from localStorage on first load
+- **Backup**: Single database file + images folder
 
 ### Server-Side Storage (Temporary)
 

@@ -302,6 +302,296 @@ gcloud auth application-default login
 
 ---
 
+## Session Endpoints
+
+Session endpoints manage video processing sessions and their notes. Data is persisted in SQLite database with images stored in the filesystem.
+
+### GET /api/sessions
+
+List all sessions with pagination.
+
+**Query Parameters:**
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|----------|---------|-------------|
+| `page` | number | No | 1 | Page number |
+| `pageSize` | number | No | 20 | Items per page (max 100) |
+
+**Example Request:**
+```bash
+curl "http://localhost:3001/api/sessions?page=1&pageSize=10"
+```
+
+**Success Response (200):**
+```json
+{
+  "sessions": [
+    {
+      "id": "abc123",
+      "title": "Introduction to React Hooks",
+      "url": "https://youtube.com/watch?v=...",
+      "thumbnail": "https://i.ytimg.com/vi/.../maxresdefault.jpg",
+      "date": "2024-01-15T10:30:00.000Z",
+      "status": 6,
+      "noteCount": 5
+    }
+  ],
+  "total": 25,
+  "page": 1,
+  "pageSize": 10
+}
+```
+
+---
+
+### GET /api/sessions/:id
+
+Get a single session with all its notes.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Session ID |
+
+**Example Request:**
+```bash
+curl "http://localhost:3001/api/sessions/abc123"
+```
+
+**Success Response (200):**
+```json
+{
+  "id": "abc123",
+  "title": "Introduction to React Hooks",
+  "url": "https://youtube.com/watch?v=...",
+  "thumbnail": "https://i.ytimg.com/vi/.../maxresdefault.jpg",
+  "date": "2024-01-15T10:30:00.000Z",
+  "status": 6,
+  "notes": [
+    {
+      "timestamp": 30,
+      "title": "Introduction",
+      "markdown": "The presenter introduces...",
+      "imageUrl": "/api/sessions/abc123/notes/0/image"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 404 | Session not found |
+
+---
+
+### POST /api/sessions
+
+Create a new session.
+
+**Request Body:**
+```json
+{
+  "id": "abc123",
+  "title": "Introduction to React Hooks",
+  "url": "https://youtube.com/watch?v=...",
+  "thumbnail": "https://i.ytimg.com/vi/.../maxresdefault.jpg",
+  "date": "2024-01-15T10:30:00.000Z",
+  "status": 6,
+  "notes": [
+    {
+      "timestamp": 30,
+      "title": "Introduction",
+      "markdown": "The presenter introduces...",
+      "image": "data:image/jpeg;base64,..."
+    }
+  ]
+}
+```
+
+**Request Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `id` | string | Yes | Unique session ID |
+| `title` | string | Yes | Video title |
+| `date` | string | Yes | ISO date string |
+| `url` | string | No | Video URL |
+| `thumbnail` | string | No | Thumbnail URL |
+| `status` | number | No | Processing status |
+| `notes` | array | No | Note segments with images |
+
+**Success Response (201):**
+```json
+{
+  "id": "abc123",
+  "title": "Introduction to React Hooks",
+  "notes": [
+    {
+      "timestamp": 30,
+      "title": "Introduction",
+      "markdown": "The presenter introduces...",
+      "imageUrl": "/api/sessions/abc123/notes/0/image"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 400 | Missing required fields (id, title, date) |
+
+---
+
+### PUT /api/sessions/:id
+
+Update an existing session.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Session ID |
+
+**Request Body:**
+```json
+{
+  "title": "Updated Title",
+  "status": 6
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 404 | Session not found |
+
+---
+
+### DELETE /api/sessions/:id
+
+Delete a session and all associated data (notes and images).
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Session ID |
+
+**Example Request:**
+```bash
+curl -X DELETE "http://localhost:3001/api/sessions/abc123"
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 404 | Session not found |
+
+---
+
+### POST /api/sessions/:id/notes
+
+Save or replace notes for a session. Images are extracted from base64 data URLs and saved to the filesystem.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Session ID |
+
+**Request Body:**
+```json
+{
+  "notes": [
+    {
+      "timestamp": 30,
+      "title": "Introduction",
+      "markdown": "The presenter introduces...",
+      "image": "data:image/jpeg;base64,..."
+    },
+    {
+      "timestamp": 180,
+      "title": "Core Concepts",
+      "markdown": "This section covers...",
+      "image": "data:image/jpeg;base64,..."
+    }
+  ]
+}
+```
+
+**Success Response (200):**
+```json
+{
+  "id": "abc123",
+  "notes": [
+    {
+      "timestamp": 30,
+      "title": "Introduction",
+      "markdown": "The presenter introduces...",
+      "imageUrl": "/api/sessions/abc123/notes/0/image"
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 400 | Notes must be an array |
+| 404 | Session not found |
+
+---
+
+### GET /api/sessions/:id/notes/:noteIndex/image
+
+Get the image for a specific note.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `id` | string | Session ID |
+| `noteIndex` | number | Note index (0-based) |
+
+**Example Request:**
+```bash
+curl "http://localhost:3001/api/sessions/abc123/notes/0/image"
+```
+
+**Success Response (200):**
+- **Content-Type:** `image/jpeg`
+- **Body:** Binary image data
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 404 | Session, note, or image not found |
+
+---
+
 ## Error Response Format
 
 All error responses follow this format:

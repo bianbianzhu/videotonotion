@@ -50,7 +50,7 @@ flowchart TD
 
     subgraph Output["5. Output Stage"]
         R --> S[Status: COMPLETED]
-        S --> T[Save to localStorage]
+        S --> T[Save to Database]
         T --> U[Display in NotesPreview]
     end
 
@@ -380,7 +380,8 @@ interface NoteSegment {
   timestamp: number;   // Seconds from video start
   title: string;       // Section title (e.g., "Introduction to React Hooks")
   markdown: string;    // Detailed summary content
-  image?: string;      // JPEG data URL (optional)
+  image?: string;      // JPEG data URL (used during processing)
+  imageUrl?: string;   // Server URL for persisted images (from database)
 }
 ```
 
@@ -469,7 +470,7 @@ stateDiagram-v2
 1. **Chunked Processing**: Large videos split to avoid memory issues
 2. **Sequential Frame Extraction**: One frame at a time to prevent memory spikes
 3. **Image Compression**: JPEG quality set to 80% for balance of quality/size
-4. **localStorage Stripping**: Images removed from persisted sessions
+4. **Filesystem Storage**: Images saved as files, not in database, for efficiency
 
 ## Gemini Video Constraints
 

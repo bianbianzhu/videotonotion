@@ -181,7 +181,9 @@ videotonotion/
 │   ├── aiProviderService.ts    # AI provider abstraction
 │   ├── geminiService.ts        # Direct Gemini API calls
 │   ├── vertexService.ts        # Vertex AI via backend
-│   └── youtubeApiService.ts    # YouTube backend client
+│   ├── youtubeApiService.ts    # YouTube backend client
+│   ├── sessionApiService.ts    # Session CRUD API client
+│   └── migrationService.ts     # localStorage migration
 │
 ├── utils/                  # Frontend utilities
 │   └── videoUtils.ts       # Base64 & frame extraction
@@ -205,12 +207,23 @@ videotonotion/
     │
     ├── routes/             # API route handlers
     │   ├── youtube.ts      # YouTube endpoints
-    │   └── ai.ts           # AI proxy endpoints
+    │   ├── ai.ts           # AI proxy endpoints
+    │   └── sessions.ts     # Session CRUD endpoints
     │
     ├── services/           # Backend services
     │   ├── ytdlpService.ts # yt-dlp wrapper
     │   ├── chunkService.ts # ffmpeg chunking
-    │   └── aiService.ts    # Vertex AI integration
+    │   ├── aiService.ts    # Vertex AI integration
+    │   └── imageStorageService.ts # Image file operations
+    │
+    ├── db/                 # Database layer
+    │   ├── index.ts        # SQLite connection
+    │   ├── schema.ts       # Database schema
+    │   └── sessionRepository.ts # Data access layer
+    │
+    ├── data/               # (gitignored) Runtime data
+    │   ├── videotonotion.db # SQLite database
+    │   └── images/         # Stored note images
     │
     ├── utils/              # Backend utilities
     │   └── urlUtils.ts     # URL validation
@@ -364,18 +377,56 @@ kill -9 <PID>
 PORT=3002 pnpm run dev:client
 ```
 
-### localStorage Full
+### better-sqlite3 Native Module Error
 
-**Error:** Notes not saving
+**Error:** `Could not locate the bindings file`
+
+```
+Error: Could not locate the bindings file. Tried:
+ → .../better-sqlite3/build/better_sqlite3.node
+ → .../better-sqlite3/build/Debug/better_sqlite3.node
+ → .../better-sqlite3/build/Release/better_sqlite3.node
+```
+
+**Cause:** pnpm v10+ blocks native module build scripts by default for security. The `better-sqlite3` package requires compiling C++ code during installation.
+
+**Solution 1** - Rebuild the native module manually:
+```bash
+cd server
+npm rebuild better-sqlite3
+```
+
+**Solution 2** - Approve builds interactively:
+```bash
+cd server
+pnpm approve-builds
+# Select better-sqlite3 from the list
+```
+
+**Solution 3** - Pre-approve in package.json (already configured):
+```json
+{
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  }
+}
+```
+
+### Database Issues
+
+**Error:** Database file locked or corrupted
 
 **Solution:**
-1. Clear browser localStorage
-2. Or clear old sessions in the sidebar
+1. Stop all running server instances
+2. Delete the database file: `rm server/data/videotonotion.db`
+3. Restart the server (schema will be recreated)
 
-```javascript
-// In browser console
-localStorage.removeItem('videotonotion_sessions');
-```
+**Error:** Sessions not persisting
+
+**Solution:**
+1. Ensure the server is running (database is on backend)
+2. Check browser console for API errors
+3. Verify `server/data/` directory exists and is writable
 
 ## Development Tips
 

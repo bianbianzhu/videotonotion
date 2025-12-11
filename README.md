@@ -18,6 +18,7 @@ A full-stack application that converts video lectures into structured, Notion-re
 |-------|------------|
 | Frontend | React 19, Vite, TypeScript |
 | Backend | Express.js, Node.js, TypeScript |
+| Database | SQLite (better-sqlite3) |
 | AI | Google Gemini API, Vertex AI |
 | Video Processing | yt-dlp, ffmpeg |
 | Icons | Lucide React |
@@ -141,19 +142,29 @@ videotonotion/
     ├── index.ts            # Express server entry
     ├── routes/
     │   ├── youtube.ts      # YouTube endpoints
-    │   └── ai.ts           # AI proxy endpoints
+    │   ├── ai.ts           # AI proxy endpoints
+    │   └── sessions.ts     # Session CRUD endpoints
     ├── services/
     │   ├── ytdlpService.ts # yt-dlp wrapper
     │   ├── chunkService.ts # Video chunking
-    │   └── aiService.ts    # Vertex AI integration
+    │   ├── aiService.ts    # Vertex AI integration
+    │   └── imageStorageService.ts # Image file operations
+    ├── db/
+    │   ├── index.ts        # SQLite connection
+    │   ├── schema.ts       # Database schema
+    │   └── sessionRepository.ts # Data access layer
+    ├── data/               # (gitignored) Runtime data
+    │   ├── videotonotion.db # SQLite database
+    │   └── images/         # Stored note images
     └── VIDEO_REQUIREMENTS.md # Gemini video limits
 ```
 
 ## Data Persistence
 
-- **Session History**: Saved to browser localStorage
-- **Note Images**: Stripped from storage to save space (regenerated on demand)
+- **Session History**: Stored in SQLite database (`server/data/videotonotion.db`)
+- **Note Images**: Saved to filesystem (`server/data/images/`) and served via API
 - **Server Downloads**: Stored in temp directory, auto-cleaned after 1 hour
+- **Migration**: Existing localStorage data is automatically migrated on first load
 
 ## Available Scripts
 
@@ -198,6 +209,55 @@ For detailed documentation, see the `/docs` folder:
 - [API Reference](./docs/API_REFERENCE.md) - Backend endpoints
 - [Development Guide](./docs/DEVELOPMENT.md) - Setup and troubleshooting
 - [Notion Export Guide](./docs/NOTION_EXPORT.md) - Using generated notes
+
+## Troubleshooting
+
+### better-sqlite3 Native Module Error
+
+If you see an error like this when starting the server:
+
+```
+Error: Could not locate the bindings file. Tried:
+ → .../better-sqlite3/build/better_sqlite3.node
+ → .../better-sqlite3/build/Debug/better_sqlite3.node
+ → .../better-sqlite3/build/Release/better_sqlite3.node
+```
+
+**Cause**: pnpm v10+ blocks native module build scripts by default for security. The `better-sqlite3` package requires compiling C++ code during installation.
+
+**Solution 1** - Rebuild the native module manually:
+
+```bash
+cd server
+npm rebuild better-sqlite3
+```
+
+**Solution 2** - Approve builds for better-sqlite3 (interactive):
+
+```bash
+cd server
+pnpm approve-builds
+# Select better-sqlite3 from the list
+```
+
+**Solution 3** - Pre-approve in package.json (recommended for teams):
+
+Add this to `server/package.json`:
+
+```json
+{
+  "pnpm": {
+    "onlyBuiltDependencies": ["better-sqlite3"]
+  }
+}
+```
+
+Then reinstall:
+
+```bash
+cd server
+pnpm install
+```
 
 ## License
 
