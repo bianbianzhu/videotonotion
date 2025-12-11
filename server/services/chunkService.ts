@@ -279,27 +279,41 @@ function reindexChunks(chunks: ChunkInfo[], outputDir: string): ChunkInfo[] {
   // Sort by start time to ensure correct order
   const sorted = [...chunks].sort((a, b) => a.startTime - b.startTime);
 
-  return sorted.map((chunk, index) => {
+  // Two-pass rename strategy to avoid collisions:
+  // When chunk-1 splits into chunk-1-a and chunk-1-b, and chunk-2 exists,
+  // renaming sequentially could delete chunk-2 before we process it.
+  // Using temporary names ensures no conflicts.
+
+  // Pass 1: Rename all to temporary names to avoid collisions
+  const tempChunks = sorted.map((chunk, index) => {
+    const tempId = `_tmp_chunk-${index}`;
+    const tempPath = path.join(outputDir, `${tempId}.mp4`);
+
+    if (chunk.path !== tempPath && fs.existsSync(chunk.path)) {
+      fs.renameSync(chunk.path, tempPath);
+    }
+
+    return { ...chunk, tempPath: fs.existsSync(tempPath) ? tempPath : chunk.path };
+  });
+
+  // Pass 2: Rename from temporary to final sequential names
+  return tempChunks.map((chunk, index) => {
     const newId = `chunk-${index}`;
     const newPath = path.join(outputDir, `${newId}.mp4`);
+    const sourcePath = (chunk as ChunkInfo & { tempPath: string }).tempPath;
 
-    // Rename file if needed (skip if it's the original file for small videos)
-    if (chunk.path !== newPath && !chunk.path.includes(outputDir.replace(/[/\\]$/, ''))) {
-      // Only rename if the chunk file exists and is different
-      if (fs.existsSync(chunk.path) && chunk.path !== newPath) {
-        // Remove target if it exists (shouldn't happen but be safe)
-        if (fs.existsSync(newPath)) {
-          fs.unlinkSync(newPath);
-        }
-        fs.renameSync(chunk.path, newPath);
+    if (sourcePath !== newPath && fs.existsSync(sourcePath)) {
+      if (fs.existsSync(newPath)) {
+        fs.unlinkSync(newPath);
       }
+      fs.renameSync(sourcePath, newPath);
     }
 
     return {
       ...chunk,
       id: newId,
       index,
-      path: chunk.path === newPath || !fs.existsSync(newPath) ? chunk.path : newPath,
+      path: fs.existsSync(newPath) ? newPath : sourcePath,
     };
   });
 }
