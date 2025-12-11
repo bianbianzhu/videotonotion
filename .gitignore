@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .env
+
+# Database and persistent storage
+server/data/

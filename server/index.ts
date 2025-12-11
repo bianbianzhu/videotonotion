@@ -3,6 +3,7 @@ import cors from 'cors';
 import youtubeRouter from './routes/youtube.js';
 import aiRouter from './routes/ai.js';
 import uploadRouter from './routes/upload.js';
+import sessionsRouter from './routes/sessions.js';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -18,6 +19,7 @@ app.use(express.json({ limit: '100mb' })); // Increased limit for video data
 app.use('/api/youtube', youtubeRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/upload', uploadRouter);
+app.use('/api/sessions', sessionsRouter);
 
 // Health check
 app.get('/api/health', (_req, res) => {
@@ -33,6 +35,13 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 app.listen(PORT, () => {
   console.log(`Server running on http://localhost:${PORT}`);
   console.log('Available endpoints:');
+  console.log('  GET  /api/sessions');
+  console.log('  GET  /api/sessions/:id');
+  console.log('  POST /api/sessions');
+  console.log('  PUT  /api/sessions/:id');
+  console.log('  DELETE /api/sessions/:id');
+  console.log('  POST /api/sessions/:id/notes');
+  console.log('  GET  /api/sessions/:id/notes/:noteIndex/image');
   console.log('  GET  /api/youtube/info?url=...');
   console.log('  POST /api/youtube/download');
   console.log('  GET  /api/youtube/chunk/:sessionId/:chunkId');

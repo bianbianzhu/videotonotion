@@ -87,11 +87,11 @@ const NotesPreview: React.FC<NotesPreviewProps> = ({ notes, videoTitle = "Innova
                             </span>
                         </h2>
                         
-                        {segment.image && (
+                        {(segment.image || segment.imageUrl) && (
                             <div className="notion-img-container my-4">
-                                <img 
-                                    src={segment.image} 
-                                    alt={`Slide for ${segment.title}`} 
+                                <img
+                                    src={segment.image || segment.imageUrl}
+                                    alt={`Slide for ${segment.title}`}
                                     className="notion-img rounded-lg border border-gray-100 shadow-sm"
                                 />
                             </div>

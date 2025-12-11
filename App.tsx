@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Play, Sparkles } from 'lucide-react';
 import VideoInput from './components/VideoInput';
 import ProcessingView from './components/ProcessingView';
@@ -23,58 +23,59 @@ import {
   cleanupUploadSession,
   extractFrameFromUpload,
 } from './services/uploadApiService';
+import {
+  getSessions as fetchSessionsFromApi,
+  getSession as fetchSessionFromApi,
+  createSession as createSessionInDb,
+  updateSession as updateSessionInDb,
+  deleteSession as deleteSessionFromDb,
+  saveNotes as saveNotesToDb,
+  toVideoSession,
+} from './services/sessionApiService';
+import { migrateFromLocalStorage, hasLocalStorageData } from './services/migrationService';
 import { CHUNK_SIZE_THRESHOLD_MB } from './constants';
 
 const simpleId = () => Math.random().toString(36).substr(2, 9);
-const STORAGE_KEY = 'videotonotion_sessions';
-
-/** Serializes sessions for localStorage (excludes non-serializable fields) */
-function serializeSessions(sessions: VideoSession[]): string {
-  // Persist sessions that have reached READY state or beyond (excluding ERROR)
-  const persistableSessions = sessions
-    .filter((s) => s.status >= ProcessingStatus.READY && s.status !== ProcessingStatus.ERROR)
-    .map(({ file, ...rest }) => ({
-      ...rest,
-      date: rest.date instanceof Date ? rest.date.toISOString() : rest.date,
-      // Strip images from notes to save localStorage space
-      notes: rest.notes?.map(({ image, ...note }) => note),
-    }));
-  return JSON.stringify(persistableSessions);
-}
-
-/** Deserializes sessions from localStorage */
-function deserializeSessions(json: string): VideoSession[] {
-  const parsed = JSON.parse(json);
-  return parsed.map((s: any) => ({
-    ...s,
-    date: new Date(s.date),
-  }));
-}
 
 const App: React.FC = () => {
   const [aiConfig, setAiConfig] = useState<AIConfig>(getDefaultConfig());
-  const [sessions, setSessions] = useState<VideoSession[]>(() => {
-    // Load completed sessions from localStorage on initial render
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        return deserializeSessions(saved);
-      }
-    } catch (e) {
-      console.warn('Failed to load sessions from localStorage:', e);
-    }
-    return [];
-  });
+  const [sessions, setSessions] = useState<VideoSession[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Save completed sessions to localStorage whenever sessions change
+  // Load sessions from database on mount (with migration from localStorage)
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, serializeSessions(sessions));
-    } catch (e) {
-      console.warn('Failed to save sessions to localStorage:', e);
-    }
-  }, [sessions]);
+    const loadSessions = async () => {
+      try {
+        // Check if there's localStorage data to migrate
+        if (hasLocalStorageData()) {
+          console.log('Found localStorage data, migrating to database...');
+          await migrateFromLocalStorage();
+        }
+
+        // Fetch sessions from database
+        const response = await fetchSessionsFromApi(1, 100);
+        const loadedSessions: VideoSession[] = [];
+
+        for (const item of response.sessions) {
+          try {
+            const detail = await fetchSessionFromApi(item.id);
+            loadedSessions.push(toVideoSession(detail) as VideoSession);
+          } catch (e) {
+            console.warn(`Failed to load session ${item.id}:`, e);
+          }
+        }
+
+        setSessions(loadedSessions);
+      } catch (e) {
+        console.error('Failed to load sessions from database:', e);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadSessions();
+  }, []);
 
   // Derived state
   const selectedSession = sessions.find((s) => s.id === selectedId);
@@ -99,7 +100,14 @@ const App: React.FC = () => {
       cleanupUploadSession(session.uploadSessionId).catch(console.error);
     }
 
-    // Remove from state (and localStorage via useEffect)
+    // Delete from database
+    try {
+      await deleteSessionFromDb(id);
+    } catch (e) {
+      console.error('Failed to delete session from database:', e);
+    }
+
+    // Remove from state
     setSessions((prev) => prev.filter((s) => s.id !== id));
 
     // Deselect if this was the selected session
@@ -358,11 +366,33 @@ const App: React.FC = () => {
         URL.revokeObjectURL(videoUrlForFrames);
       }
 
+      // Update local state
       updateSession(selectedSession.id, {
         status: ProcessingStatus.COMPLETED,
         notes: enrichedSegments,
         currentChunk: undefined,
       });
+
+      // Save to database (creates or updates session with notes and images)
+      try {
+        await createSessionInDb({
+          id: selectedSession.id,
+          title: selectedSession.title,
+          url: selectedSession.url,
+          thumbnail: selectedSession.thumbnail,
+          date: selectedSession.date.toISOString(),
+          status: ProcessingStatus.COMPLETED,
+          youtubeSessionId: selectedSession.youtubeSessionId,
+          uploadSessionId: selectedSession.uploadSessionId,
+          totalDuration: selectedSession.totalDuration,
+          chunks: selectedSession.chunks,
+          notes: enrichedSegments,
+        });
+        console.log('Session saved to database with images');
+      } catch (dbError) {
+        console.error('Failed to save session to database:', dbError);
+        // Still show success to user since processing completed
+      }
 
       // TODO: Re-enable cleanup after fixing frame extraction
       // Cleanup YouTube session after successful processing

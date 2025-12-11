@@ -2,7 +2,8 @@ export interface NoteSegment {
   timestamp: number;
   title: string;
   markdown: string;
-  image?: string; // Data URL of the extracted frame
+  image?: string; // Data URL of the extracted frame (used during processing)
+  imageUrl?: string; // Server URL for persisted images (from database)
 }
 
 export interface VideoMetadata {
