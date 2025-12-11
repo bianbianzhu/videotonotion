@@ -528,10 +528,10 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              {/* Status: Processing */}
+              {/* Status: Processing (with chunks) */}
               {(selectedSession.status === ProcessingStatus.ANALYZING ||
                 selectedSession.status === ProcessingStatus.EXTRACTING_FRAMES ||
-                selectedSession.status === ProcessingStatus.UPLOADING) && (
+                (selectedSession.status === ProcessingStatus.UPLOADING && selectedSession.chunks)) && (
                 <div className="py-10">
                   <ProcessingView status={selectedSession.status} />
                   {selectedSession.chunks && selectedSession.currentChunk && (
