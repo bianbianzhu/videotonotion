@@ -1,141 +1,140 @@
-# Plan: YouTube Download + Dual AI Provider Support
+# Video to Notion - Roadmap
 
-## Summary
-1. Node.js Express backend using yt-dlp to download YouTube videos
-2. Chunk large videos with ffmpeg for processing
-3. Support both **Gemini API** (with API key) and **Vertex AI** (with project ID, region, no API key)
+This document outlines the current implementation status and planned features for Video to Notion.
 
-## Prerequisites
-```bash
-brew install yt-dlp
-brew install ffmpeg
-```
+## Current Implementation (v1.0)
 
-For Vertex AI: Google Cloud SDK with `gcloud auth application-default login`
+### Completed Features
 
-## Quick Start
-```bash
-pnpm run install:all   # Install all dependencies
-pnpm run dev           # Start both frontend and backend
-```
+- [x] Video file upload with drag-and-drop
+- [x] YouTube URL support via backend (yt-dlp)
+- [x] Video chunking for large files (ffmpeg)
+- [x] Dual AI provider support (Gemini API + Vertex AI)
+- [x] Structured note generation with timestamps
+- [x] Frame extraction (canvas for local, ffmpeg for YouTube)
+- [x] Session management with progress tracking
+- [x] Browser localStorage persistence
+- [x] Copy to clipboard export
+- [x] HTML download export
 
----
+### Architecture
 
-## Architecture
+| Component | Technology | Status |
+|-----------|------------|--------|
+| Frontend | React 19 + Vite | Complete |
+| Backend | Express.js | Complete |
+| AI Analysis | Gemini 3 Pro Preview | Complete |
+| Video Processing | yt-dlp + ffmpeg | Complete |
+| Storage | localStorage + temp files | Complete |
 
-### Frontend (Vite + React)
-- **Gemini API**: Called directly from browser using `@google/genai`
-- **Vertex AI**: Proxied through backend (requires Google Cloud credentials)
+### API Endpoints
 
-### Backend (Express, port 3001)
-- YouTube download via yt-dlp
-- Video chunking via ffmpeg
-- Vertex AI proxy endpoint
-
----
-
-## Server Files
-
-```
-server/
-├── index.ts                  # Express server entry
-├── routes/
-│   ├── youtube.ts            # YouTube download/chunk endpoints
-│   └── ai.ts                 # Vertex AI proxy endpoint
-├── services/
-│   ├── ytdlpService.ts       # yt-dlp wrapper
-│   ├── chunkService.ts       # ffmpeg video chunking
-│   └── aiService.ts          # Vertex AI integration
-├── utils/urlUtils.ts         # URL validation
-├── package.json
-└── tsconfig.json
-```
-
-## Frontend Files
-
-```
-services/
-├── aiProviderService.ts      # Unified AI provider interface
-├── geminiService.ts          # Gemini API (direct)
-├── vertexService.ts          # Vertex AI (via backend)
-└── youtubeApiService.ts      # YouTube API client
-
-components/
-└── ProviderSelector.tsx      # Provider config UI
-```
-
----
-
-## API Endpoints
-
-### YouTube
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/youtube/info?url=` | Get video metadata |
 | POST | `/api/youtube/download` | Download + chunk video |
 | GET | `/api/youtube/chunk/:sessionId/:chunkId` | Stream specific chunk |
 | GET | `/api/youtube/full/:sessionId` | Stream full video |
+| GET | `/api/youtube/frame/:sessionId?timestamp=` | Extract frame |
 | DELETE | `/api/youtube/session/:sessionId` | Cleanup session |
-
-### AI
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/ai/vertex/analyze` | Analyze video with Vertex AI |
+| POST | `/api/ai/vertex/analyze` | Vertex AI proxy |
 
 ---
 
-## Provider Configuration
+## What's Next
 
-**Gemini API:**
-```typescript
-{
-  provider: 'gemini',
-  apiKey: string
-}
-```
+### Phase 2: Enhanced Export
 
-**Vertex AI:**
-```typescript
-{
-  provider: 'vertex',
-  projectId: string,
-  location: string,    // e.g., 'us-central1'
-  model?: string       // defaults to 'gemini-2.0-flash'
-}
-```
+- [ ] **Direct Notion API Integration**
+  - OAuth authentication with Notion
+  - Automatic page creation in user's workspace
+  - Database entries for video notes
+  - Clickable timestamp links
+
+- [ ] **Export Format Options**
+  - Markdown file download
+  - PDF export
+  - JSON export for programmatic use
+
+### Phase 3: Improved Analysis
+
+- [ ] **Transcript Support**
+  - YouTube auto-generated captions
+  - User-uploaded SRT/VTT files
+  - Transcript alongside AI analysis
+
+- [ ] **Custom Prompts**
+  - User-configurable analysis prompts
+  - Different note formats (summary, detailed, Q&A)
+  - Language selection
+
+- [ ] **Better Frame Selection**
+  - AI-guided frame selection (slides, diagrams)
+  - Multiple frames per segment option
+  - Frame quality optimization
+
+### Phase 4: User Experience
+
+- [ ] **Account System**
+  - User authentication
+  - Cloud sync of notes history
+  - Share notes with others
+
+- [ ] **UI Improvements**
+  - Dark mode
+  - Mobile responsive design
+  - Keyboard shortcuts
+  - Video preview player
+
+### Phase 5: Platform Support
+
+- [ ] **Additional Video Sources**
+  - Vimeo support
+  - Direct video URL support (improved)
+  - Google Drive video links
+  - Loom integration
+
+- [ ] **Deployment**
+  - Docker containerization
+  - One-click deploy (Vercel, Railway)
+  - Self-hosted documentation
 
 ---
 
-## Chunk Processing Flow
+## Known Issues
 
-1. Frontend calls `/api/youtube/download` with YouTube URL
-2. Server downloads video with yt-dlp, chunks with ffmpeg (~18MB each)
-3. Returns `{ sessionId, chunks: [{ id, startTime, endTime }], title }`
-4. Frontend fetches each chunk, processes through AI provider
-5. Timestamps adjusted: `segment.timestamp += chunk.startTime`
-6. Results merged into single notes array
+### Current Limitations
+
+1. **Storage**
+   - localStorage limited to ~5-10MB
+   - Images stripped from saved sessions
+   - No cross-device sync
+
+2. **Video Processing**
+   - Large videos may timeout
+   - Some YouTube videos blocked (age-restricted, private)
+   - Frame extraction can fail on corrupted videos
+
+3. **AI Analysis**
+   - Quota limits on Gemini API
+   - 45-minute max video length with audio
+   - Analysis quality depends on video content
+
+### TODOs in Code
+
+| File | Issue | Description |
+|------|-------|-------------|
+| `App.tsx:248` | Frame cleanup disabled | YouTube session cleanup commented out |
 
 ---
 
-## npm Scripts
+## Contributing
 
-```json
-{
-  "dev": "concurrently -n client,server \"pnpm run dev:client\" \"pnpm run dev:server\"",
-  "dev:client": "vite",
-  "dev:server": "cd server && pnpm run dev",
-  "install:all": "pnpm install && cd server && pnpm install"
-}
-```
+When contributing to this project:
 
----
+1. Check the roadmap above for planned features
+2. Review existing issues and TODOs
+3. Follow the coding patterns in the codebase
+4. Update documentation as needed
 
-## Error Handling
-
-| Error | Response |
-|-------|----------|
-| Invalid YouTube URL | 400 - "Invalid YouTube URL" |
-| Video not found | 404 - "Video not available" |
-| Age-restricted | 403 - "Video requires sign-in" |
-| yt-dlp failure | 500 - "Download failed" |
-| Vertex auth error | "Run: gcloud auth application-default login" |
+See [docs/DEVELOPMENT.md](./docs/DEVELOPMENT.md) for setup instructions.
