@@ -118,8 +118,21 @@ export async function chunkVideo(
     });
   }
 
-  return {
+  // Post-check and re-split oversized chunks (handles VBR encoding)
+  console.log(`Initial chunking complete: ${chunks.length} chunks. Validating sizes...`);
+  const validatedChunks = await validateAndResplitChunks(
     chunks,
+    filePath,
+    outputDir,
+    MAX_CHUNK_SIZE_BYTES
+  );
+
+  // Re-index chunks sequentially after any re-splits
+  const finalChunks = reindexChunks(validatedChunks, outputDir);
+  console.log(`Final chunk count after validation: ${finalChunks.length}`);
+
+  return {
+    chunks: finalChunks,
     totalDuration: duration,
   };
 }
@@ -150,6 +163,144 @@ function createChunk(
       .on('end', () => resolve())
       .on('error', (err) => reject(err))
       .run();
+  });
+}
+
+/**
+ * Splits an oversized chunk in half, creating two new chunks.
+ * Videos use Variable Bit Rate (VBR) encoding, so time-based chunking
+ * can produce inconsistent file sizes. This function handles oversized chunks.
+ * @param chunk - The oversized chunk to split
+ * @param inputPath - Path to original source video
+ * @param outputDir - Directory for output chunks
+ * @returns Two new chunks covering the same time range
+ */
+async function splitChunkInHalf(
+  chunk: ChunkInfo,
+  inputPath: string,
+  outputDir: string
+): Promise<ChunkInfo[]> {
+  const midTime = chunk.startTime + (chunk.duration / 2);
+  const firstDuration = midTime - chunk.startTime;
+  const secondDuration = chunk.endTime - midTime;
+
+  // Generate unique IDs for sub-chunks
+  const firstId = `${chunk.id}-a`;
+  const secondId = `${chunk.id}-b`;
+  const firstPath = path.join(outputDir, `${firstId}.mp4`);
+  const secondPath = path.join(outputDir, `${secondId}.mp4`);
+
+  console.log(`Re-splitting oversized chunk ${chunk.id} (${(fs.statSync(chunk.path).size / 1024 / 1024).toFixed(1)}MB) into two halves`);
+
+  // Delete the oversized chunk file
+  if (fs.existsSync(chunk.path)) {
+    fs.unlinkSync(chunk.path);
+  }
+
+  // Create two new chunks from the original video
+  await createChunk(inputPath, firstPath, chunk.startTime, firstDuration);
+  await createChunk(inputPath, secondPath, midTime, secondDuration);
+
+  return [
+    {
+      id: firstId,
+      index: -1, // Will be re-indexed later
+      path: firstPath,
+      startTime: chunk.startTime,
+      endTime: midTime,
+      duration: firstDuration,
+    },
+    {
+      id: secondId,
+      index: -1, // Will be re-indexed later
+      path: secondPath,
+      startTime: midTime,
+      endTime: chunk.endTime,
+      duration: secondDuration,
+    },
+  ];
+}
+
+/**
+ * Validates chunk sizes and recursively re-splits any that exceed the max size.
+ * This handles VBR (Variable Bit Rate) videos where time-based chunking
+ * produces inconsistent file sizes due to varying bitrates throughout the video.
+ * @param chunks - Array of chunks to validate
+ * @param inputPath - Path to original source video
+ * @param outputDir - Directory for output chunks
+ * @param maxSizeBytes - Maximum allowed chunk size in bytes
+ * @returns Array of validated chunks, all within size limit
+ */
+async function validateAndResplitChunks(
+  chunks: ChunkInfo[],
+  inputPath: string,
+  outputDir: string,
+  maxSizeBytes: number
+): Promise<ChunkInfo[]> {
+  const validChunks: ChunkInfo[] = [];
+
+  for (const chunk of chunks) {
+    // Skip chunks that reference the original file (small videos)
+    if (chunk.path === inputPath) {
+      validChunks.push(chunk);
+      continue;
+    }
+
+    const fileSize = fs.statSync(chunk.path).size;
+
+    if (fileSize <= maxSizeBytes) {
+      // Chunk is within limit
+      validChunks.push(chunk);
+    } else {
+      // Chunk too large - split it in half and recurse
+      const subChunks = await splitChunkInHalf(chunk, inputPath, outputDir);
+      const validSubChunks = await validateAndResplitChunks(
+        subChunks,
+        inputPath,
+        outputDir,
+        maxSizeBytes
+      );
+      validChunks.push(...validSubChunks);
+    }
+  }
+
+  return validChunks;
+}
+
+/**
+ * Re-indexes chunks sequentially and renames files to match.
+ * After recursive splitting, chunk IDs may be like "chunk-0-a-b".
+ * This normalizes them back to "chunk-0", "chunk-1", etc.
+ * @param chunks - Array of chunks to re-index
+ * @param outputDir - Directory containing chunk files
+ * @returns Array of chunks with sequential indices and renamed files
+ */
+function reindexChunks(chunks: ChunkInfo[], outputDir: string): ChunkInfo[] {
+  // Sort by start time to ensure correct order
+  const sorted = [...chunks].sort((a, b) => a.startTime - b.startTime);
+
+  return sorted.map((chunk, index) => {
+    const newId = `chunk-${index}`;
+    const newPath = path.join(outputDir, `${newId}.mp4`);
+
+    // Rename file if needed (skip if it's the original file for small videos)
+    if (chunk.path !== newPath && !chunk.path.includes(outputDir.replace(/[/\\]$/, ''))) {
+      // Only rename if the chunk file exists and is different
+      if (fs.existsSync(chunk.path) && chunk.path !== newPath) {
+        // Remove target if it exists (shouldn't happen but be safe)
+        if (fs.existsSync(newPath)) {
+          fs.unlinkSync(newPath);
+        }
+        fs.renameSync(chunk.path, newPath);
+      }
+    }
+
+    return {
+      ...chunk,
+      id: newId,
+      index,
+      path: chunk.path === newPath || !fs.existsSync(newPath) ? chunk.path : newPath,
+    };
   });
 }
 

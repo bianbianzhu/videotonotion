@@ -130,7 +130,7 @@ sequenceDiagram
 
 ## Video Chunking
 
-Large videos are split into chunks to work within Gemini's video length limits.
+Large videos are split into chunks to work within Gemini's video length limits and API rate limits.
 
 ### Chunk Configuration
 
@@ -144,27 +144,95 @@ Large videos are split into chunks to work within Gemini's video length limits.
 
 > **Tip:** Reduce chunk size (e.g., 5MB) if hitting 429 rate limit errors.
 
+### The VBR Challenge
+
+Videos use **Variable Bit Rate (VBR)** encoding for efficient compression:
+
+| Scene Type | Bitrate | Bytes per Second |
+|------------|---------|------------------|
+| High-motion (action, transitions) | Higher | More bytes |
+| Low-motion (static slides, talking head) | Lower | Fewer bytes |
+
+**Why simple time-based chunking fails:**
+
+The naive approach calculates chunk duration using average bitrate:
+```
+chunk_duration = target_size / average_bitrate
+```
+
+This assumes **constant bitrate**, which is incorrect for VBR videos. Result: chunks can vary wildly in size (e.g., 5MB to 56MB) despite targeting 15MB.
+
+### Solution: Post-Check and Recursive Re-Split
+
+We use a two-phase approach:
+
+1. **Initial Split**: Create chunks using time-based calculation (produces valid video files)
+2. **Validation**: Check actual file size of each chunk
+3. **Re-Split**: Recursively split oversized chunks in half until all are within limit
+
+```mermaid
+flowchart TD
+    A[Original Video<br/>182MB, VBR] --> B[Time-based chunking]
+    B --> C[chunk_0: 40MB ❌]
+    B --> D[chunk_1: 12MB ✓]
+    B --> E[chunk_2: 5MB ✓]
+    B --> F[chunk_3: 56MB ❌]
+
+    C --> G[Re-split in half]
+    G --> H[chunk_0-a: 18MB ❌]
+    G --> I[chunk_0-b: 22MB ❌]
+
+    H --> J[Re-split again]
+    J --> K[chunk_0-a-a: 8MB ✓]
+    J --> L[chunk_0-a-b: 10MB ✓]
+
+    I --> M[Re-split again]
+    M --> N[chunk_0-b-a: 11MB ✓]
+    M --> O[chunk_0-b-b: 11MB ✓]
+
+    F --> P[Re-split recursively...]
+    P --> Q[Multiple valid chunks ✓]
+
+    K & L & N & O & D & E & Q --> R[Re-index sequentially]
+    R --> S[chunk-0, chunk-1, chunk-2, ...]
+```
+
 ### Chunking Process
 
 ```mermaid
 flowchart LR
     A[Original Video<br/>60MB, 30min] --> B[ffmpeg Analysis]
     B --> C[Calculate chunk duration]
-    C --> D[Split into segments]
-
-    D --> E[chunk_0.mp4<br/>0:00-10:00]
-    D --> F[chunk_1.mp4<br/>10:00-20:00]
-    D --> G[chunk_2.mp4<br/>20:00-30:00]
+    C --> D[Initial time-based split]
+    D --> E[Validate chunk sizes]
+    E --> F{Any oversized?}
+    F -->|Yes| G[Split in half, recurse]
+    G --> E
+    F -->|No| H[Re-index chunks]
+    H --> I[Final chunks:<br/>chunk-0, chunk-1, ...]
 ```
 
 **ChunkInfo Structure:**
 ```typescript
 interface ChunkInfo {
-  id: number;        // Chunk index (0, 1, 2, ...)
+  id: string;        // Chunk identifier (e.g., "chunk-0")
+  index: number;     // Sequential index (0, 1, 2, ...)
+  path: string;      // File path to chunk
   startTime: number; // Start time in seconds
   endTime: number;   // End time in seconds
+  duration: number;  // Chunk duration in seconds
 }
 ```
+
+### Why Not Use ffmpeg's `-fs` Flag?
+
+The `-fs` (file size limit) flag was considered but rejected because it can produce **invalid video files**:
+
+- **Abrupt cutoff**: Video stops mid-frame or mid-GOP
+- **Incomplete container**: Missing metadata or index
+- **Decoder issues**: May fail to play or convert to base64
+
+Our recursive re-split approach always produces valid video files because each chunk is created with proper start/end times and container finalization.
 
 ## AI Analysis
 
