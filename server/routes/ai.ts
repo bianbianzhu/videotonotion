@@ -6,7 +6,7 @@ const router: Router = Router();
 // POST /api/ai/vertex/analyze - Analyze video with Vertex AI
 router.post('/vertex/analyze', async (req: Request, res: Response) => {
   try {
-    const { projectId, location, model, base64Data, mimeType } = req.body;
+    const { projectId, location, model, base64Data, mimeType, chunkContext } = req.body;
 
     if (!base64Data || !mimeType) {
       res.status(400).json({
@@ -20,7 +20,8 @@ router.post('/vertex/analyze', async (req: Request, res: Response) => {
       location,
       model || 'gemini-3-pro-preview',
       base64Data,
-      mimeType
+      mimeType,
+      chunkContext
     );
 
     res.json({ segments });

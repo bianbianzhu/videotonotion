@@ -29,8 +29,38 @@ const responseSchema = z
 
 export type NoteSegment = z.infer<typeof segmentSchema>;
 
-const VIDEO_ANALYSIS_PROMPT = `
-    Analyze this video for a technical lecture summary.
+export interface ChunkContext {
+  chunkNumber: number;
+  totalChunks: number;
+  chunkStartTime: number;
+  chunkEndTime: number;
+  totalDuration: number;
+  previousTopics?: string[];
+}
+
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const buildAnalysisPrompt = (chunkContext?: ChunkContext): string => {
+  let contextPrefix = '';
+
+  if (chunkContext) {
+    const { chunkNumber, totalChunks, chunkStartTime, chunkEndTime, totalDuration, previousTopics } = chunkContext;
+    contextPrefix = `
+CONTEXT: This is video segment ${chunkNumber} of ${totalChunks}.
+Time range: ${formatTime(chunkStartTime)} to ${formatTime(chunkEndTime)} of ${formatTime(totalDuration)} total video.
+${previousTopics && previousTopics.length > 0
+  ? `Topics from previous segment (for continuity): ${previousTopics.join(', ')}
+If this segment continues a topic from above, acknowledge the continuation in your notes.`
+  : 'This is the first segment of the video.'}
+
+`;
+  }
+
+  return `${contextPrefix}Analyze this video for a technical lecture summary.
     I need to create structured notes for Notion.
     Identify the key topics and transitions.
     For each distinct section or key slide, provide:
@@ -54,8 +84,8 @@ const VIDEO_ANALYSIS_PROMPT = `
       ...
     ]
 
-    IMPORTANT: Do not include any other text or comments in your response. Only return the JSON array.
-  `;
+    IMPORTANT: Do not include any other text or comments in your response. Only return the JSON array.`;
+};
 
 /**
  * Analyzes video content using Vertex AI to generate structured notes.
@@ -64,6 +94,7 @@ const VIDEO_ANALYSIS_PROMPT = `
  * @param model - Model name (e.g., 'gemini-2.0-flash')
  * @param base64Data - Base64-encoded video data
  * @param mimeType - Video MIME type
+ * @param chunkContext - Optional context for chunked video processing
  * @returns Array of note segments with timestamps and content
  */
 export async function analyzeVideoWithVertex(
@@ -71,7 +102,8 @@ export async function analyzeVideoWithVertex(
   location: string,
   model: string,
   base64Data: string,
-  mimeType: string
+  mimeType: string,
+  chunkContext?: ChunkContext
 ): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
@@ -85,6 +117,8 @@ export async function analyzeVideoWithVertex(
     location: region || "global",
   });
 
+  const prompt = buildAnalysisPrompt(chunkContext);
+
   const contents: ContentListUnion = [
     {
       inlineData: {
@@ -92,7 +126,7 @@ export async function analyzeVideoWithVertex(
         data: base64Data,
       },
     },
-    { text: VIDEO_ANALYSIS_PROMPT },
+    { text: prompt },
   ];
 
   const config: GenerateContentConfig = {

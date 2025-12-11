@@ -1,9 +1,30 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { NoteSegment } from "../types";
+import { NoteSegment, ChunkContext } from "../types";
 import { GEMINI_MODEL } from "../constants";
 
-export const VIDEO_ANALYSIS_PROMPT = `
-    Analyze this video for a technical lecture summary.
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, '0')}`;
+};
+
+const buildAnalysisPrompt = (chunkContext?: ChunkContext): string => {
+  let contextPrefix = '';
+
+  if (chunkContext) {
+    const { chunkNumber, totalChunks, chunkStartTime, chunkEndTime, totalDuration, previousTopics } = chunkContext;
+    contextPrefix = `
+CONTEXT: This is video segment ${chunkNumber} of ${totalChunks}.
+Time range: ${formatTime(chunkStartTime)} to ${formatTime(chunkEndTime)} of ${formatTime(totalDuration)} total video.
+${previousTopics && previousTopics.length > 0
+  ? `Topics from previous segment (for continuity): ${previousTopics.join(', ')}
+If this segment continues a topic from above, acknowledge the continuation in your notes.`
+  : 'This is the first segment of the video.'}
+
+`;
+  }
+
+  return `${contextPrefix}Analyze this video for a technical lecture summary.
     I need to create structured notes for Notion.
     Identify the key topics and transitions.
     For each distinct section or key slide, provide:
@@ -12,8 +33,10 @@ export const VIDEO_ANALYSIS_PROMPT = `
     3. A detailed summary paragraph of the spoken content for that section.
 
     Return the response strictly as a JSON array.
-    Ensure timestamps are chronological.
-  `;
+    Ensure timestamps are chronological.`;
+};
+
+export const VIDEO_ANALYSIS_PROMPT = buildAnalysisPrompt();
 
 export const RESPONSE_SCHEMA = {
   type: Type.ARRAY,
@@ -32,18 +55,21 @@ export const RESPONSE_SCHEMA = {
 export const generateNotesFromVideo = async (
   apiKey: string,
   base64Data: string,
-  mimeType: string
+  mimeType: string,
+  chunkContext?: ChunkContext
 ): Promise<NoteSegment[]> => {
-  return generateNotesFromVideoGemini(apiKey, base64Data, mimeType);
+  return generateNotesFromVideoGemini(apiKey, base64Data, mimeType, undefined, chunkContext);
 };
 
 export const generateNotesFromVideoGemini = async (
   apiKey: string,
   base64Data: string,
   mimeType: string,
-  model?: string
+  model?: string,
+  chunkContext?: ChunkContext
 ): Promise<NoteSegment[]> => {
   const ai = new GoogleGenAI({ apiKey });
+  const prompt = buildAnalysisPrompt(chunkContext);
 
   try {
     const response = await ai.models.generateContent({
@@ -57,7 +83,7 @@ export const generateNotesFromVideoGemini = async (
             },
           },
           {
-            text: VIDEO_ANALYSIS_PROMPT,
+            text: prompt,
           },
         ],
       },

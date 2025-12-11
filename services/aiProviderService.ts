@@ -1,4 +1,4 @@
-import { NoteSegment } from '../types';
+import { NoteSegment, ChunkContext } from '../types';
 import { generateNotesFromVideoGemini } from './geminiService';
 import { generateNotesFromVideoVertex } from './vertexService';
 
@@ -18,21 +18,22 @@ export interface VertexConfig {
 export type AIConfig = GeminiConfig | VertexConfig;
 
 export interface AIProvider {
-  generateNotesFromVideo(base64Data: string, mimeType: string): Promise<NoteSegment[]>;
+  generateNotesFromVideo(base64Data: string, mimeType: string, chunkContext?: ChunkContext): Promise<NoteSegment[]>;
 }
 
 export function createAIProvider(config: AIConfig): AIProvider {
   return {
-    async generateNotesFromVideo(base64Data: string, mimeType: string): Promise<NoteSegment[]> {
+    async generateNotesFromVideo(base64Data: string, mimeType: string, chunkContext?: ChunkContext): Promise<NoteSegment[]> {
       if (config.provider === 'gemini') {
-        return generateNotesFromVideoGemini(config.apiKey, base64Data, mimeType, config.model);
+        return generateNotesFromVideoGemini(config.apiKey, base64Data, mimeType, config.model, chunkContext);
       } else {
         return generateNotesFromVideoVertex(
           config.projectId,
           config.location,
           base64Data,
           mimeType,
-          config.model
+          config.model,
+          chunkContext
         );
       }
     },

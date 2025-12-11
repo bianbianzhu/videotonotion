@@ -1,4 +1,4 @@
-import { NoteSegment } from '../types';
+import { NoteSegment, ChunkContext } from '../types';
 import { VERTEX_DEFAULT_MODEL, VERTEX_DEFAULT_LOCATION } from '../constants';
 
 const API_BASE = '/api/ai';
@@ -8,7 +8,8 @@ export const generateNotesFromVideoVertex = async (
   location: string,
   base64Data: string,
   mimeType: string,
-  model?: string
+  model?: string,
+  chunkContext?: ChunkContext
 ): Promise<NoteSegment[]> => {
   const response = await fetch(`${API_BASE}/vertex/analyze`, {
     method: 'POST',
@@ -19,6 +20,7 @@ export const generateNotesFromVideoVertex = async (
       model: model || VERTEX_DEFAULT_MODEL,
       base64Data,
       mimeType,
+      chunkContext,
     }),
   });
 

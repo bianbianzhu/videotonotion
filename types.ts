@@ -28,6 +28,15 @@ export interface ChunkInfo {
   endTime: number;
 }
 
+export interface ChunkContext {
+  chunkNumber: number;      // 1-indexed
+  totalChunks: number;
+  chunkStartTime: number;   // seconds
+  chunkEndTime: number;     // seconds
+  totalDuration: number;    // seconds
+  previousTopics?: string[]; // titles from previous chunk for continuity
+}
+
 export interface VideoSession {
   id: string;
   title: string;
@@ -41,6 +50,9 @@ export interface VideoSession {
   progress?: number; // 0-100 for download/processing
   // YouTube-specific fields
   youtubeSessionId?: string; // Backend session ID for fetching chunks
+  // Upload-specific fields (for large local files)
+  uploadSessionId?: string; // Backend session ID for uploaded chunked videos
   chunks?: ChunkInfo[]; // Video chunks for large videos
   currentChunk?: number; // Current chunk being processed
+  totalDuration?: number; // Total video duration in seconds
 }
