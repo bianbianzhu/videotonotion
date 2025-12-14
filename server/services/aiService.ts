@@ -13,7 +13,7 @@ const segmentSchema = z.object({
   timestamp: z
     .number()
     .describe(
-      "The exact timestamp (in seconds) where the visual slide or key content appears."
+      "The exact timestamp (in seconds) where the visual slide or key content appears. The timestamp should be relative to the chunk, starting from 0."
     ),
   title: z.string().describe("A concise title for the section."),
   markdown: z
