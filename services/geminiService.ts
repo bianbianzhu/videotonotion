@@ -13,12 +13,18 @@ const buildAnalysisPrompt = (chunkContext?: ChunkContext): string => {
 
   if (chunkContext) {
     const { chunkNumber, totalChunks, chunkStartTime, chunkEndTime, totalDuration, previousTopics } = chunkContext;
+    const chunkDuration = chunkEndTime - chunkStartTime;
     contextPrefix = `
 CONTEXT: This is video segment ${chunkNumber} of ${totalChunks}.
-Time range: ${formatTime(chunkStartTime)} to ${formatTime(chunkEndTime)} of ${formatTime(totalDuration)} total video.
+This chunk covers ${formatTime(chunkStartTime)} to ${formatTime(chunkEndTime)} in the full ${formatTime(totalDuration)} video.
+
+IMPORTANT: All timestamps you return must be RELATIVE TO THIS CHUNK, starting from 0.
+- Valid timestamp range: 0 to ${chunkDuration.toFixed(1)} seconds
+- Do NOT use absolute timestamps from the full video
+- Example: If something appears 30 seconds into this chunk, return timestamp: 30 (not ${chunkStartTime + 30})
+
 ${previousTopics && previousTopics.length > 0
-  ? `Topics from previous segment (for continuity): ${previousTopics.join(', ')}
-If this segment continues a topic from above, acknowledge the continuation in your notes.`
+  ? `Topics from previous segment (for continuity): ${previousTopics.join(', ')}`
   : 'This is the first segment of the video.'}
 
 `;
