@@ -1,4 +1,5 @@
 import React, { useRef } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { NoteSegment } from '../types';
 import { Copy, Download, Share2 } from 'lucide-react';
 
@@ -97,9 +98,9 @@ const NotesPreview: React.FC<NotesPreviewProps> = ({ notes, videoTitle = "Innova
                             </div>
                         )}
                         
-                        <p className="notion-p text-gray-600 leading-relaxed whitespace-pre-wrap">
-                            {segment.markdown}
-                        </p>
+                        <div className="notion-prose text-gray-600 leading-relaxed">
+                            <ReactMarkdown>{segment.markdown}</ReactMarkdown>
+                        </div>
                     </div>
                 ))}
             </div>
