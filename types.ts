@@ -6,6 +6,9 @@ export interface NoteSegment {
   imageUrl?: string; // Server URL for persisted images (from database)
 }
 
+// Video analysis strategy selection
+export type VideoAnalysisStrategy = 'inline' | 'filesApi';
+
 export interface VideoMetadata {
   name: string;
   duration: number;
@@ -20,7 +23,19 @@ export enum ProcessingStatus {
   ANALYZING,
   EXTRACTING_FRAMES,
   COMPLETED,
-  ERROR
+  ERROR,
+  // Files API specific statuses
+  UPLOADING_TO_FILES_API, // Uploading video to Gemini Files API
+  PROCESSING_FILE,        // Waiting for file to become ACTIVE on Gemini servers
+}
+
+// Files API upload progress tracking
+export interface FilesApiUploadProgress {
+  phase: 'uploading' | 'processing' | 'ready';
+  uploadProgress?: number;      // 0-100 during upload phase
+  processingStartTime?: number; // Timestamp when processing started (for elapsed time)
+  fileName?: string;            // Gemini file name for status checks
+  fileUri?: string;             // Gemini file URI for analysis
 }
 
 export interface ChunkInfo {
@@ -56,4 +71,7 @@ export interface VideoSession {
   chunks?: ChunkInfo[]; // Video chunks for large videos
   currentChunk?: number; // Current chunk being processed
   totalDuration?: number; // Total video duration in seconds
+  // Files API specific fields
+  filesApiUpload?: FilesApiUploadProgress; // Progress tracking for Files API upload
+  analysisStrategy?: VideoAnalysisStrategy; // Track which strategy was used
 }

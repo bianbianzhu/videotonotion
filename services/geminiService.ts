@@ -1,6 +1,6 @@
-import { GoogleGenAI, Type } from "@google/genai";
-import { NoteSegment, ChunkContext } from "../types";
-import { GEMINI_MODEL } from "../constants";
+import { GoogleGenAI, Type, createUserContent, createPartFromUri } from "@google/genai";
+import { NoteSegment, ChunkContext, FilesApiUploadProgress } from "../types";
+import { GEMINI_MODEL, FILES_API_POLL_INTERVAL_MS, FILES_API_TIMEOUT_MS } from "../constants";
 
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -108,6 +108,101 @@ export const generateNotesFromVideoGemini = async (
     return JSON.parse(text) as NoteSegment[];
   } catch (error) {
     console.error("Gemini API Error:", error);
+    throw error;
+  }
+};
+
+/**
+ * Generate notes from video using Gemini Files API.
+ * Uploads entire video (up to 2GB) without chunking.
+ */
+export const generateNotesFromVideoWithFilesApi = async (
+  apiKey: string,
+  file: File | Blob,
+  mimeType: string,
+  model?: string,
+  onProgress?: (progress: FilesApiUploadProgress) => void
+): Promise<NoteSegment[]> => {
+  const ai = new GoogleGenAI({ apiKey });
+  const modelName = model || GEMINI_MODEL;
+
+  // Phase 1: Upload file to Gemini Files API
+  onProgress?.({ phase: 'uploading', uploadProgress: 0 });
+
+  let uploadedFile = await ai.files.upload({
+    file: file,
+    config: {
+      mimeType: mimeType,
+      displayName: file instanceof File ? file.name : 'video.mp4',
+    },
+  });
+
+  onProgress?.({
+    phase: 'processing',
+    fileName: uploadedFile.name,
+    processingStartTime: Date.now(),
+  });
+
+  // Phase 2: Poll for ACTIVE state
+  const startTime = Date.now();
+
+  while (uploadedFile.state?.toString() !== 'ACTIVE') {
+    if (Date.now() - startTime > FILES_API_TIMEOUT_MS) {
+      throw new Error(`File processing timeout after ${FILES_API_TIMEOUT_MS / 1000}s. Try using Inline strategy.`);
+    }
+
+    if (uploadedFile.state?.toString() === 'FAILED') {
+      throw new Error('File processing failed on Gemini servers. Try using Inline strategy.');
+    }
+
+    await new Promise(r => setTimeout(r, FILES_API_POLL_INTERVAL_MS));
+    uploadedFile = await ai.files.get({ name: uploadedFile.name! });
+  }
+
+  onProgress?.({
+    phase: 'ready',
+    fileName: uploadedFile.name,
+    fileUri: uploadedFile.uri,
+  });
+
+  // Phase 3: Analyze with file reference
+  const prompt = buildAnalysisPrompt(); // No chunk context for full video
+
+  try {
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: createUserContent([
+        createPartFromUri(uploadedFile.uri!, uploadedFile.mimeType!),
+        prompt,
+      ]),
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+        temperature: 0.2,
+      },
+    });
+
+    const text = response.text;
+    if (!text) {
+      throw new Error("No response text from Gemini");
+    }
+
+    // Cleanup: Delete the uploaded file (optional - auto-deletes after 48h)
+    try {
+      await ai.files.delete({ name: uploadedFile.name! });
+    } catch (e) {
+      console.warn('Failed to cleanup uploaded file:', e);
+    }
+
+    return JSON.parse(text) as NoteSegment[];
+  } catch (error) {
+    // Attempt cleanup on error
+    try {
+      await ai.files.delete({ name: uploadedFile.name! });
+    } catch {
+      // Ignore cleanup errors
+    }
+    console.error("Gemini Files API Error:", error);
     throw error;
   }
 };

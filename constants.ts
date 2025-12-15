@@ -26,3 +26,8 @@ export const VERTEX_LOCATIONS = [
   "asia-southeast1",
   "global"
 ];
+
+// Files API limits and configuration
+export const FILES_API_MAX_SIZE_BYTES = 2 * 1024 * 1024 * 1024; // 2GB max file size
+export const FILES_API_POLL_INTERVAL_MS = 5000; // 5 seconds between status checks
+export const FILES_API_TIMEOUT_MS = 600000; // 10 minutes timeout for large videos

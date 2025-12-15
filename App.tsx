@@ -5,7 +5,7 @@ import ProcessingView from './components/ProcessingView';
 import NotesPreview from './components/NotesPreview';
 import Sidebar from './components/Sidebar';
 import ProviderSelector from './components/ProviderSelector';
-import { NoteSegment, ProcessingStatus, VideoSession, ChunkContext } from './types';
+import { NoteSegment, ProcessingStatus, VideoSession, ChunkContext, FilesApiUploadProgress } from './types';
 import { createAIProvider, AIConfig, isConfigValid, getDefaultConfig } from './services/aiProviderService';
 import { fileToBase64, extractFrameFromVideo } from './utils/videoUtils';
 import {
@@ -33,7 +33,7 @@ import {
   toVideoSession,
 } from './services/sessionApiService';
 import { migrateFromLocalStorage, hasLocalStorageData } from './services/migrationService';
-import { CHUNK_SIZE_THRESHOLD_MB } from './constants';
+import { CHUNK_SIZE_THRESHOLD_MB, FILES_API_MAX_SIZE_BYTES } from './constants';
 
 const simpleId = () => Math.random().toString(36).substr(2, 9);
 
@@ -222,14 +222,89 @@ const App: React.FC = () => {
     if (!selectedSession || !isConfigReady) return;
 
     const provider = createAIProvider(aiConfig);
-
-    updateSession(selectedSession.id, { status: ProcessingStatus.UPLOADING });
+    const useFilesApi = aiConfig.strategy === 'filesApi';
 
     try {
       let allSegments: NoteSegment[] = [];
       let videoUrlForFrames: string;
 
-      if (selectedSession.chunks && selectedSession.youtubeSessionId) {
+      if (useFilesApi) {
+        // ========================================
+        // FILES API FLOW - No chunking, upload entire video
+        // ========================================
+
+        // Get the video file
+        let videoFile: File | Blob;
+        let mimeType: string;
+
+        if (selectedSession.file) {
+          videoFile = selectedSession.file;
+          mimeType = videoFile instanceof File ? videoFile.type || 'video/mp4' : 'video/mp4';
+          videoUrlForFrames = URL.createObjectURL(selectedSession.file);
+        } else if (selectedSession.youtubeSessionId) {
+          // For YouTube, fetch the full video as blob
+          updateSession(selectedSession.id, {
+            status: ProcessingStatus.DOWNLOADING,
+            progress: 0,
+          });
+
+          const response = await fetch(getFullVideoUrl(selectedSession.youtubeSessionId));
+          if (!response.ok) throw new Error('Failed to fetch YouTube video');
+          videoFile = await response.blob();
+          mimeType = 'video/mp4';
+          videoUrlForFrames = getFullVideoUrl(selectedSession.youtubeSessionId);
+        } else if (selectedSession.uploadSessionId) {
+          // For uploaded videos, fetch the full video as blob
+          updateSession(selectedSession.id, {
+            status: ProcessingStatus.DOWNLOADING,
+            progress: 0,
+          });
+
+          const response = await fetch(getUploadedVideoUrl(selectedSession.uploadSessionId));
+          if (!response.ok) throw new Error('Failed to fetch uploaded video');
+          videoFile = await response.blob();
+          mimeType = 'video/mp4';
+          videoUrlForFrames = getUploadedVideoUrl(selectedSession.uploadSessionId);
+        } else {
+          throw new Error('No video file available');
+        }
+
+        // Check file size limit (2GB)
+        if (videoFile.size > FILES_API_MAX_SIZE_BYTES) {
+          throw new Error(`Video exceeds 2GB limit for Files API. Please use Inline strategy.`);
+        }
+
+        // Use Files API method with progress tracking
+        allSegments = await provider.generateNotesFromVideoWithFilesApi(
+          videoFile,
+          mimeType,
+          (progress: FilesApiUploadProgress) => {
+            if (progress.phase === 'uploading') {
+              updateSession(selectedSession.id, {
+                status: ProcessingStatus.UPLOADING_TO_FILES_API,
+                progress: progress.uploadProgress,
+                filesApiUpload: progress,
+              });
+            } else if (progress.phase === 'processing') {
+              updateSession(selectedSession.id, {
+                status: ProcessingStatus.PROCESSING_FILE,
+                filesApiUpload: progress,
+              });
+            } else if (progress.phase === 'ready') {
+              updateSession(selectedSession.id, {
+                status: ProcessingStatus.ANALYZING,
+                filesApiUpload: progress,
+              });
+            }
+          }
+        );
+
+      } else if (selectedSession.chunks && selectedSession.youtubeSessionId) {
+        // ========================================
+        // INLINE DATA FLOW - YouTube with chunks
+        // ========================================
+        updateSession(selectedSession.id, { status: ProcessingStatus.UPLOADING });
+
         // YouTube video with chunks - process each chunk
         const chunks = selectedSession.chunks;
         let previousTopics: string[] = [];
@@ -278,6 +353,11 @@ const App: React.FC = () => {
         // Use full video URL for frame extraction
         videoUrlForFrames = getFullVideoUrl(selectedSession.youtubeSessionId);
       } else if (selectedSession.chunks && selectedSession.uploadSessionId) {
+        // ========================================
+        // INLINE DATA FLOW - Uploaded with chunks
+        // ========================================
+        updateSession(selectedSession.id, { status: ProcessingStatus.UPLOADING });
+
         // Uploaded local video with chunks - process each chunk
         const chunks = selectedSession.chunks;
         let previousTopics: string[] = [];
@@ -325,6 +405,9 @@ const App: React.FC = () => {
         // Use full video URL for frame extraction
         videoUrlForFrames = getUploadedVideoUrl(selectedSession.uploadSessionId);
       } else if (selectedSession.file) {
+        // ========================================
+        // INLINE DATA FLOW - Direct small file
+        // ========================================
         // Direct upload - single file processing
         const file = selectedSession.file as File;
         const base64Data = await fileToBase64(file);
@@ -503,12 +586,14 @@ const App: React.FC = () => {
                   </div>
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">Video Ready</h2>
                   <p className="text-gray-500 mb-2 max-w-md mx-auto">
-                    {selectedSession.chunks
-                      ? `Video will be processed in ${selectedSession.chunks.length} chunk(s).`
-                      : 'The video is loaded and ready to process.'}
+                    {aiConfig.strategy === 'filesApi'
+                      ? 'Video will be uploaded and processed as a single file.'
+                      : selectedSession.chunks
+                        ? `Video will be processed in ${selectedSession.chunks.length} chunk(s).`
+                        : 'The video is loaded and ready to process.'}
                   </p>
                   <p className="text-gray-400 text-sm mb-8">
-                    Using {aiConfig.provider === 'gemini' ? 'Gemini API' : 'Vertex AI'} for analysis
+                    Using {aiConfig.provider === 'gemini' ? 'Gemini API' : 'Vertex AI'} with {aiConfig.strategy === 'filesApi' ? 'Files API' : 'Inline'} strategy
                   </p>
                   <button
                     onClick={handleProcessSession}
@@ -528,12 +613,40 @@ const App: React.FC = () => {
                 </div>
               )}
 
-              {/* Status: Processing (with chunks) */}
+              {/* Status: Processing (Files API or Inline with chunks) */}
               {(selectedSession.status === ProcessingStatus.ANALYZING ||
                 selectedSession.status === ProcessingStatus.EXTRACTING_FRAMES ||
+                selectedSession.status === ProcessingStatus.UPLOADING_TO_FILES_API ||
+                selectedSession.status === ProcessingStatus.PROCESSING_FILE ||
                 (selectedSession.status === ProcessingStatus.UPLOADING && selectedSession.chunks)) && (
                 <div className="py-10">
                   <ProcessingView status={selectedSession.status} />
+
+                  {/* Files API progress */}
+                  {selectedSession.status === ProcessingStatus.UPLOADING_TO_FILES_API && (
+                    <div className="text-center mt-4">
+                      <p className="text-gray-500">Uploading video to Gemini...</p>
+                      {selectedSession.progress !== undefined && (
+                        <div className="w-64 bg-gray-200 rounded-full h-2 mt-2 mx-auto">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all"
+                            style={{ width: `${selectedSession.progress}%` }}
+                          />
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400 mt-2">{selectedSession.progress ?? 0}% uploaded</p>
+                    </div>
+                  )}
+
+                  {/* Files API processing */}
+                  {selectedSession.status === ProcessingStatus.PROCESSING_FILE && (
+                    <div className="text-center mt-4">
+                      <p className="text-gray-500">Processing video on Gemini servers...</p>
+                      <p className="text-xs text-gray-400 mt-2">Large videos may take several minutes</p>
+                    </div>
+                  )}
+
+                  {/* Inline chunked processing */}
                   {selectedSession.chunks && selectedSession.currentChunk && (
                     <div className="text-center mt-4">
                       <p className="text-gray-500">
