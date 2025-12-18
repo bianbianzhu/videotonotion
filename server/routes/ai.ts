@@ -4,48 +4,75 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import {
-  analyzeVideoWithVertex,
-  uploadVideoToFilesApi,
-  getFileStatus,
-  analyzeWithFilesApi,
-} from '../services/aiService.js';
+import { analyzeVideoWithVertex, analyzeVideoWithGcs } from '../services/aiService.js';
+import { uploadToGcs, deleteFromGcs } from '../services/gcsService.js';
 
 const router: Router = Router();
 
 // ============================================================================
-// Files API Configuration
+// GCS Configuration (replaces Files API which doesn't work with Vertex AI)
 // ============================================================================
 
-const TEMP_DIR = path.join(os.tmpdir(), 'videotonotion-files');
+const TEMP_DIR = path.join(os.tmpdir(), 'videotonotion-gcs');
 
 // Ensure temp directory exists
 if (!fs.existsSync(TEMP_DIR)) {
   fs.mkdirSync(TEMP_DIR, { recursive: true });
 }
 
-// Multer storage for Files API uploads
-const filesApiStorage = multer.diskStorage({
-  destination: (req, file, cb) => {
+// Session storage for GCS uploads
+interface GcsSession {
+  gcsUri: string;
+  bucketName: string;
+  objectName: string;
+  localPath: string;
+  projectId: string;
+  location: string;
+  model: string;
+  mimeType: string;
+  createdAt: Date;
+}
+
+const gcsSessions = new Map<string, GcsSession>();
+
+// Cleanup old sessions (older than 1 hour)
+setInterval(() => {
+  const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+  for (const [sessionId, session] of gcsSessions.entries()) {
+    if (session.createdAt < oneHourAgo) {
+      // Cleanup local file
+      if (fs.existsSync(session.localPath)) {
+        fs.unlinkSync(session.localPath);
+      }
+      // Try to cleanup GCS file (best effort)
+      deleteFromGcs(session.bucketName, session.objectName).catch(() => {});
+      gcsSessions.delete(sessionId);
+    }
+  }
+}, 15 * 60 * 1000); // Check every 15 minutes
+
+// Multer storage for GCS uploads
+const gcsStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
     const sessionId = randomUUID();
     const sessionDir = path.join(TEMP_DIR, sessionId);
     fs.mkdirSync(sessionDir, { recursive: true });
-    (req as any).filesApiSessionId = sessionId;
-    (req as any).filesApiSessionDir = sessionDir;
+    (req as any).gcsSessionId = sessionId;
+    (req as any).gcsSessionDir = sessionDir;
     cb(null, sessionDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const ext = path.extname(file.originalname) || '.mp4';
     cb(null, `video${ext}`);
   },
 });
 
-const filesApiUpload = multer({
-  storage: filesApiStorage,
+const gcsUpload = multer({
+  storage: gcsStorage,
   limits: {
-    fileSize: 2 * 1024 * 1024 * 1024, // 2GB limit for Files API
+    fileSize: 10 * 1024 * 1024 * 1024, // 10GB limit (GCS has no practical limit)
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (file.mimetype.startsWith('video/')) {
       cb(null, true);
     } else {
@@ -54,7 +81,23 @@ const filesApiUpload = multer({
   },
 });
 
-// POST /api/ai/vertex/analyze - Analyze video with Vertex AI
+/**
+ * Get MIME type from file path
+ */
+function getMimeTypeFromPath(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const mimeTypes: Record<string, string> = {
+    '.mp4': 'video/mp4',
+    '.webm': 'video/webm',
+    '.mov': 'video/quicktime',
+    '.avi': 'video/x-msvideo',
+    '.mkv': 'video/x-matroska',
+    '.3gp': 'video/3gpp',
+  };
+  return mimeTypes[ext] || 'video/mp4';
+}
+
+// POST /api/ai/vertex/analyze - Analyze video with Vertex AI (inline base64)
 router.post('/vertex/analyze', async (req: Request, res: Response) => {
   try {
     const { projectId, location, model, base64Data, mimeType, chunkContext } = req.body;
@@ -96,76 +139,165 @@ router.post('/vertex/analyze', async (req: Request, res: Response) => {
 });
 
 // ============================================================================
-// Files API Endpoints
+// GCS Endpoints (for Vertex AI large video analysis)
+// NOTE: Files API does NOT work with Vertex AI. Use GCS instead.
 // ============================================================================
 
-// POST /api/ai/vertex/files/upload - Upload video for Files API processing
-router.post('/vertex/files/upload', filesApiUpload.single('video'), async (req: Request, res: Response) => {
+// POST /api/ai/vertex/gcs/upload - Upload video to GCS for Vertex AI analysis
+router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request, res: Response) => {
   try {
     const file = req.file;
-    const sessionId = (req as any).filesApiSessionId;
-    const { projectId, location, model } = req.body;
+    const sessionId = (req as any).gcsSessionId;
+    const { bucketName, projectId, location, model } = req.body;
 
     if (!file || !sessionId) {
       res.status(400).json({ error: 'No video file uploaded' });
       return;
     }
 
-    const result = await uploadVideoToFilesApi(
-      file.path,
-      sessionId,
-      projectId || '',
-      location || 'global',
-      model || 'gemini-3-pro-preview'
-    );
-
-    res.json(result);
-  } catch (error: any) {
-    console.error('Files API upload error:', error);
-    res.status(500).json({ error: error.message || 'Upload failed' });
-  }
-});
-
-// GET /api/ai/vertex/files/status/:sessionId - Check file processing status
-router.get('/vertex/files/status/:sessionId', async (req: Request, res: Response) => {
-  try {
-    const { sessionId } = req.params;
-    const status = await getFileStatus(sessionId);
-    res.json(status);
-  } catch (error: any) {
-    console.error('Status check error:', error);
-    res.status(500).json({ error: error.message || 'Status check failed' });
-  }
-});
-
-// POST /api/ai/vertex/files/analyze - Analyze uploaded file
-router.post('/vertex/files/analyze', async (req: Request, res: Response) => {
-  try {
-    const { sessionId } = req.body;
-
-    if (!sessionId) {
-      res.status(400).json({ error: 'Session ID required' });
+    if (!bucketName) {
+      res.status(400).json({ error: 'GCS bucket name is required' });
       return;
     }
 
-    const segments = await analyzeWithFilesApi(sessionId);
+    // Generate unique object name in GCS
+    const timestamp = Date.now();
+    const ext = path.extname(file.originalname) || '.mp4';
+    const objectName = `videotonotion/${sessionId}/${timestamp}${ext}`;
+    const mimeType = getMimeTypeFromPath(file.path);
+
+    console.log(`Uploading to GCS: gs://${bucketName}/${objectName}`);
+
+    // Upload to GCS
+    const gcsUri = await uploadToGcs(file.path, bucketName, objectName);
+
+    // Store session for later analysis
+    gcsSessions.set(sessionId, {
+      gcsUri,
+      bucketName,
+      objectName,
+      localPath: file.path,
+      projectId: projectId || '',
+      location: location || 'us-central1',
+      model: model || 'gemini-3-pro-preview',
+      mimeType,
+      createdAt: new Date(),
+    });
+
+    console.log(`GCS upload complete: ${gcsUri}`);
+
+    res.json({ gcsUri, sessionId });
+  } catch (error: any) {
+    console.error('GCS upload error:', error);
+
+    let errorMessage = error.message || 'Upload failed';
+
+    // Provide helpful error messages
+    if (errorMessage.includes('Could not load the default credentials')) {
+      errorMessage = 'GCS credentials not found. Run: gcloud auth application-default login';
+    } else if (errorMessage.includes('does not have storage.objects.create')) {
+      errorMessage = 'Permission denied. Ensure your account has storage.objectCreator role on the bucket.';
+    } else if (errorMessage.includes('The specified bucket does not exist')) {
+      errorMessage = 'GCS bucket not found. Check the bucket name and ensure it exists.';
+    }
+
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
+// POST /api/ai/vertex/gcs/analyze - Analyze video from GCS URI
+router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
+  try {
+    const { sessionId, gcsUri, projectId, location, model, mimeType } = req.body;
+
+    let analysisGcsUri = gcsUri;
+    let analysisMimeType = mimeType || 'video/mp4';
+    let analysisProjectId = projectId;
+    let analysisLocation = location;
+    let analysisModel = model;
+    let session: GcsSession | undefined;
+
+    // If sessionId provided, use stored session info
+    if (sessionId) {
+      session = gcsSessions.get(sessionId);
+      if (!session) {
+        res.status(404).json({ error: 'Session not found' });
+        return;
+      }
+      analysisGcsUri = session.gcsUri;
+      analysisMimeType = session.mimeType;
+      analysisProjectId = session.projectId || projectId;
+      analysisLocation = session.location || location;
+      analysisModel = session.model || model;
+    }
+
+    if (!analysisGcsUri) {
+      res.status(400).json({ error: 'GCS URI or session ID required' });
+      return;
+    }
+
+    console.log(`Analyzing video from GCS: ${analysisGcsUri}`);
+
+    const segments = await analyzeVideoWithGcs(
+      analysisProjectId || '',
+      analysisLocation || 'us-central1',
+      analysisModel || 'gemini-3-pro-preview',
+      analysisGcsUri,
+      analysisMimeType
+    );
+
     res.json({ segments });
   } catch (error: any) {
-    console.error('Files API analysis error:', error);
+    console.error('GCS analysis error:', error);
 
     let errorMessage = error.message || 'Analysis failed';
 
     // Provide helpful error messages
     if (errorMessage.includes('Could not load the default credentials')) {
-      errorMessage =
-        'Vertex AI credentials not found. Run: gcloud auth application-default login';
+      errorMessage = 'Vertex AI credentials not found. Run: gcloud auth application-default login';
     } else if (errorMessage.includes('Permission denied')) {
       errorMessage = 'Permission denied. Check your project ID and ensure Vertex AI API is enabled.';
     } else if (errorMessage.includes('quota')) {
       errorMessage = 'Quota exceeded. Try again later or check your Vertex AI quota.';
+    } else if (errorMessage.includes('INVALID_ARGUMENT') && errorMessage.includes('gs://')) {
+      errorMessage = 'Cannot access GCS file. Ensure the file exists and Vertex AI has permission to read it.';
     }
 
     res.status(500).json({ error: errorMessage });
+  }
+});
+
+// DELETE /api/ai/vertex/gcs/:sessionId - Cleanup GCS file and session
+router.delete('/vertex/gcs/:sessionId', async (req: Request, res: Response) => {
+  try {
+    const { sessionId } = req.params;
+
+    const session = gcsSessions.get(sessionId);
+    if (!session) {
+      res.status(404).json({ error: 'Session not found' });
+      return;
+    }
+
+    // Delete from GCS
+    try {
+      await deleteFromGcs(session.bucketName, session.objectName);
+      console.log(`Deleted from GCS: gs://${session.bucketName}/${session.objectName}`);
+    } catch (e) {
+      console.warn('Failed to delete from GCS:', e);
+    }
+
+    // Delete local file
+    if (fs.existsSync(session.localPath)) {
+      fs.unlinkSync(session.localPath);
+    }
+
+    // Remove session
+    gcsSessions.delete(sessionId);
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('GCS cleanup error:', error);
+    res.status(500).json({ error: error.message || 'Cleanup failed' });
   }
 });
 

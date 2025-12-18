@@ -294,6 +294,62 @@ VERTEX_AI_LOCATION=us-central1
 VERTEX_AI_MODEL=gemini-3-pro-preview
 ```
 
+## GCS Bucket Setup (for Vertex AI Large Videos)
+
+When using Vertex AI with large videos, you need to set up a GCS bucket since **Files API does NOT work with Vertex AI**.
+
+### 1. Create a GCS Bucket
+
+```bash
+# Create a bucket (replace with your preferred name and region)
+gsutil mb -l us-central1 gs://your-video-bucket-name
+
+# Or via Google Cloud Console:
+# https://console.cloud.google.com/storage/browser
+```
+
+### 2. Set Up IAM Permissions
+
+Your account needs these permissions on the bucket:
+
+```bash
+# Grant storage object creator (to upload videos)
+gsutil iam ch user:YOUR_EMAIL@domain.com:objectCreator gs://your-video-bucket-name
+
+# Grant storage object viewer (for Vertex AI to read)
+gsutil iam ch user:YOUR_EMAIL@domain.com:objectViewer gs://your-video-bucket-name
+```
+
+**Alternative: Use predefined roles:**
+```bash
+# Storage Object Admin (includes create, read, delete)
+gcloud storage buckets add-iam-policy-binding gs://your-video-bucket-name \
+  --member="user:YOUR_EMAIL@domain.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+### 3. Enable Vertex AI to Access GCS
+
+If Vertex AI cannot access your GCS files, ensure:
+1. The bucket is in the same GCP project
+2. Or grant the Vertex AI service account access:
+
+```bash
+# Get your project's Vertex AI service account
+gcloud ai service-accounts describe
+
+# Grant read access to the bucket
+gsutil iam ch serviceAccount:SERVICE_ACCOUNT@PROJECT.iam.gserviceaccount.com:objectViewer gs://your-video-bucket-name
+```
+
+### 4. Usage in the Application
+
+1. Select "Vertex AI" as the provider
+2. Choose "GCS Bucket" strategy
+3. Enter your bucket name (e.g., `your-video-bucket-name`)
+4. Upload your video - it will be stored in `gs://your-bucket/videotonotion/{sessionId}/{timestamp}.mp4`
+5. Files are automatically cleaned up after analysis
+
 ## Common Issues & Troubleshooting
 
 ### yt-dlp Errors
@@ -360,6 +416,33 @@ gcloud auth application-default login
 **Solution:**
 1. Ensure Vertex AI API is enabled
 2. Check IAM permissions for your account
+
+### GCS Errors (Vertex AI + GCS Strategy)
+
+**Error:** `GCS bucket name is required`
+
+**Solution:** Enter the bucket name in the UI when using GCS strategy.
+
+**Error:** `The specified bucket does not exist`
+
+**Solution:** Verify the bucket name is correct and exists in your GCP project.
+
+**Error:** `Permission denied. Ensure your account has storage.objectCreator role`
+
+**Solution:**
+```bash
+# Grant storage permissions
+gcloud storage buckets add-iam-policy-binding gs://your-bucket \
+  --member="user:YOUR_EMAIL@domain.com" \
+  --role="roles/storage.objectAdmin"
+```
+
+**Error:** `Cannot access GCS file. Ensure the file exists and Vertex AI has permission`
+
+**Solution:**
+1. Ensure the bucket is in the same GCP project as Vertex AI
+2. Grant the Vertex AI service account read access to the bucket
+3. Check that the file was uploaded successfully
 
 ### Port Conflicts
 

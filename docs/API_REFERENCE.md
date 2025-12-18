@@ -242,12 +242,12 @@ curl -X DELETE "http://localhost:3001/api/youtube/session/550e8400-e29b-41d4-a71
 
 ### POST /api/ai/vertex/analyze
 
-Analyze video content using Google Vertex AI (proxy endpoint).
+Analyze video content using Google Vertex AI with inline base64 data (proxy endpoint).
 
 **Request Body:**
 ```json
 {
-  "videoBase64": "AAAAGGZ0eXBpc29tAAACAGlzb21pc28y...",
+  "base64Data": "AAAAGGZ0eXBpc29tAAACAGlzb21pc28y...",
   "mimeType": "video/mp4",
   "projectId": "your-gcp-project-id",
   "location": "us-central1",
@@ -259,10 +259,10 @@ Analyze video content using Google Vertex AI (proxy endpoint).
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `videoBase64` | string | Yes | Base64-encoded video data |
+| `base64Data` | string | Yes | Base64-encoded video data |
 | `mimeType` | string | Yes | Video MIME type |
-| `projectId` | string | Yes | Google Cloud project ID |
-| `location` | string | Yes | Vertex AI region |
+| `projectId` | string | No | Google Cloud project ID (optional, uses env var) |
+| `location` | string | No | Vertex AI region (default: us-central1) |
 | `model` | string | No | Model name (default: gemini-3-pro-preview) |
 
 **Success Response (200):**
@@ -291,9 +291,143 @@ Analyze video content using Google Vertex AI (proxy endpoint).
 | 401 | Authentication failed | Invalid or missing GCP credentials |
 | 500 | Analysis failed | Vertex AI API error |
 
+---
+
+### POST /api/ai/vertex/gcs/upload
+
+Upload a video to Google Cloud Storage for Vertex AI analysis. This is required for large videos that cannot be processed inline.
+
+> **Note:** Files API does NOT work with Vertex AI. Use this GCS endpoint instead.
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `video` | file | Yes | Video file |
+| `bucketName` | string | Yes | GCS bucket name |
+| `projectId` | string | No | Google Cloud project ID |
+| `location` | string | No | Vertex AI region |
+| `model` | string | No | Model name |
+
+**Example Request:**
+```bash
+curl -X POST "http://localhost:3001/api/ai/vertex/gcs/upload" \
+  -F "video=@video.mp4" \
+  -F "bucketName=my-video-bucket"
+```
+
+**Success Response (200):**
+```json
+{
+  "gcsUri": "gs://my-video-bucket/videotonotion/session-id/1234567890.mp4",
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Error Responses:**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | No video file uploaded | Missing video file |
+| 400 | GCS bucket name is required | Missing bucket name |
+| 500 | GCS credentials not found | Run `gcloud auth application-default login` |
+| 500 | Permission denied | Check bucket IAM permissions |
+| 500 | Bucket not found | Verify bucket name exists |
+
+---
+
+### POST /api/ai/vertex/gcs/analyze
+
+Analyze a video that was uploaded to GCS.
+
+**Request Body:**
+```json
+{
+  "sessionId": "550e8400-e29b-41d4-a716-446655440000",
+  "projectId": "your-gcp-project-id",
+  "location": "us-central1",
+  "model": "gemini-3-pro-preview"
+}
+```
+
+**Alternative (Direct GCS URI):**
+```json
+{
+  "gcsUri": "gs://bucket/path/to/video.mp4",
+  "mimeType": "video/mp4",
+  "projectId": "your-gcp-project-id",
+  "location": "us-central1"
+}
+```
+
+**Request Fields:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sessionId` | string | Conditional | Session ID from upload response |
+| `gcsUri` | string | Conditional | Direct GCS URI (if no sessionId) |
+| `mimeType` | string | No | Video MIME type (required if using gcsUri) |
+| `projectId` | string | No | Google Cloud project ID |
+| `location` | string | No | Vertex AI region |
+| `model` | string | No | Model name |
+
+**Success Response (200):**
+```json
+{
+  "segments": [
+    {
+      "timestamp": 30,
+      "title": "Introduction",
+      "markdown": "The presenter introduces the main topic..."
+    }
+  ]
+}
+```
+
+**Error Responses:**
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | GCS URI or session ID required | Missing both identifiers |
+| 404 | Session not found | Invalid session ID |
+| 500 | Analysis failed | Vertex AI API error |
+| 500 | Cannot access GCS file | Check file exists and permissions |
+
+---
+
+### DELETE /api/ai/vertex/gcs/:sessionId
+
+Clean up a GCS upload session and delete the uploaded file.
+
+**Path Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `sessionId` | string | Session ID from upload response |
+
+**Example Request:**
+```bash
+curl -X DELETE "http://localhost:3001/api/ai/vertex/gcs/550e8400-e29b-41d4-a716-446655440000"
+```
+
+**Success Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+**Error Responses:**
+
+| Status | Description |
+|--------|-------------|
+| 404 | Session not found |
+
+---
+
 **Authentication Note:**
 
-This endpoint requires Google Cloud Application Default Credentials (ADC) to be configured on the server:
+All Vertex AI and GCS endpoints require Google Cloud Application Default Credentials (ADC) to be configured on the server:
 
 ```bash
 # One-time setup

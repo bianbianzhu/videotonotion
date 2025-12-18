@@ -11,6 +11,7 @@ A full-stack application that converts video lectures into structured, Notion-re
 - **Markdown Output** - Generates Notion-compatible markdown with timestamps, titles, and summaries
 - **Session Management** - Track multiple video processing sessions with progress indicators
 - **Dual AI Provider** - Support for both direct Gemini API and Google Vertex AI
+- **Flexible Video Processing** - Multiple strategies for different video sizes and providers
 
 ## Tech Stack
 
@@ -106,6 +107,34 @@ This runs:
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Video Analysis Strategies
+
+The app supports different strategies depending on your AI provider:
+
+### Gemini API (with API Key)
+
+| Strategy | Best For | Max Size | Description |
+|----------|----------|----------|-------------|
+| **Inline** | Reliability | ~20MB/chunk | Chunks large videos, processes sequentially |
+| **Files API** | Large videos | 2GB | Uploads entire video to Gemini, no chunking |
+
+### Vertex AI (with GCP Auth)
+
+| Strategy | Best For | Max Size | Description |
+|----------|----------|----------|-------------|
+| **Inline** | Reliability | ~20MB/chunk | Chunks large videos, processes sequentially |
+| **GCS Bucket** | Large videos | Unlimited | Uploads video to Google Cloud Storage, references via `gs://` URI |
+
+> **Note:** Files API does NOT work with Vertex AI. Use GCS Bucket strategy for large videos with Vertex AI.
+
+### GCS Bucket Setup (for Vertex AI)
+
+1. Create a GCS bucket in your GCP project
+2. Grant your account the following IAM permissions:
+   - `roles/storage.objectCreator` - to upload videos
+   - `roles/storage.objectViewer` - for Vertex AI to read
+3. Enter the bucket name in the UI when selecting "GCS Bucket" strategy
+
 ## Project Structure
 
 ```
@@ -142,12 +171,13 @@ videotonotion/
     ├── index.ts            # Express server entry
     ├── routes/
     │   ├── youtube.ts      # YouTube endpoints
-    │   ├── ai.ts           # AI proxy endpoints
+    │   ├── ai.ts           # AI proxy endpoints (Vertex AI + GCS)
     │   └── sessions.ts     # Session CRUD endpoints
     ├── services/
     │   ├── ytdlpService.ts # yt-dlp wrapper
     │   ├── chunkService.ts # Video chunking
     │   ├── aiService.ts    # Vertex AI integration
+    │   ├── gcsService.ts   # Google Cloud Storage operations
     │   └── imageStorageService.ts # Image file operations
     ├── db/
     │   ├── index.ts        # SQLite connection

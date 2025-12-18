@@ -1,7 +1,6 @@
 import React from 'react';
-import { Key, Cloud, Zap, Database } from 'lucide-react';
+import { Key, Cloud, Zap, Database, HardDrive } from 'lucide-react';
 import { AIConfig, GeminiConfig, VertexConfig } from '../services/aiProviderService';
-import { VideoAnalysisStrategy } from '../types';
 import { VERTEX_LOCATIONS, VERTEX_DEFAULT_LOCATION } from '../constants';
 
 interface ProviderSelectorProps {
@@ -11,27 +10,36 @@ interface ProviderSelectorProps {
 
 const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange }) => {
   const isGemini = config.provider === 'gemini';
-  const isFilesApi = config.strategy === 'filesApi';
+  const isInline = config.strategy === 'inline';
+  const isGcs = config.strategy === 'gcs';
 
   const handleProviderChange = (provider: 'gemini' | 'vertex') => {
     if (provider === 'gemini') {
+      // When switching to Gemini, convert 'gcs' to 'inline' (gcs is not valid for Gemini)
+      const strategy = config.strategy === 'gcs' ? 'inline' : (config.strategy || 'inline');
       onChange({
         provider: 'gemini',
         apiKey: '',
-        strategy: config.strategy || 'inline',
+        strategy: strategy as 'inline' | 'filesApi',
       } as GeminiConfig);
     } else {
+      // When switching to Vertex AI, convert 'filesApi' to 'inline' (filesApi is not valid for Vertex)
+      const strategy = config.strategy === 'filesApi' ? 'inline' : (config.strategy || 'inline');
       onChange({
         provider: 'vertex',
         projectId: '',
         location: VERTEX_DEFAULT_LOCATION,
-        strategy: config.strategy || 'inline',
+        strategy: strategy as 'inline' | 'gcs',
       } as VertexConfig);
     }
   };
 
-  const handleStrategyChange = (strategy: VideoAnalysisStrategy) => {
-    onChange({ ...config, strategy });
+  const handleGeminiStrategyChange = (strategy: 'inline' | 'filesApi') => {
+    onChange({ ...config, strategy } as GeminiConfig);
+  };
+
+  const handleVertexStrategyChange = (strategy: 'inline' | 'gcs') => {
+    onChange({ ...config, strategy } as VertexConfig);
   };
 
   return (
@@ -62,36 +70,67 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
         </button>
       </div>
 
-      {/* Strategy Toggle */}
-      <div className="flex bg-gray-100 rounded-lg p-1">
-        <button
-          onClick={() => handleStrategyChange('inline')}
-          title="Inline Data: Chunks large videos, processes sequentially"
-          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-            !isFilesApi
-              ? 'bg-white shadow-sm text-gray-900'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Zap className="w-4 h-4 inline mr-1" />
-          Inline
-        </button>
-        <button
-          onClick={() => handleStrategyChange('filesApi')}
-          title="Files API: Uploads entire video (up to 2GB), no chunking"
-          className={`px-3 py-1 text-sm rounded-md transition-colors ${
-            isFilesApi
-              ? 'bg-white shadow-sm text-gray-900'
-              : 'text-gray-500 hover:text-gray-700'
-          }`}
-        >
-          <Database className="w-4 h-4 inline mr-1" />
-          Files API
-        </button>
-      </div>
-      {isFilesApi && (
-        <span className="text-xs text-gray-500" title="Max 2GB, no chunking">
-          (up to 2GB)
+      {/* Strategy Toggle - Provider-specific */}
+      {isGemini ? (
+        /* Gemini: Inline or Files API */
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => handleGeminiStrategyChange('inline')}
+            title="Inline Data: Chunks large videos, processes sequentially"
+            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+              isInline
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Zap className="w-4 h-4 inline mr-1" />
+            Inline
+          </button>
+          <button
+            onClick={() => handleGeminiStrategyChange('filesApi')}
+            title="Files API: Uploads entire video (up to 2GB), no chunking"
+            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+              !isInline
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Database className="w-4 h-4 inline mr-1" />
+            Files API
+          </button>
+        </div>
+      ) : (
+        /* Vertex AI: Inline or GCS Bucket */
+        <div className="flex bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => handleVertexStrategyChange('inline')}
+            title="Inline Data: Chunks large videos, processes sequentially"
+            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+              isInline
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Zap className="w-4 h-4 inline mr-1" />
+            Inline
+          </button>
+          <button
+            onClick={() => handleVertexStrategyChange('gcs')}
+            title="GCS Bucket: Uploads entire video to Google Cloud Storage"
+            className={`px-3 py-1 text-sm rounded-md transition-colors ${
+              isGcs
+                ? 'bg-white shadow-sm text-gray-900'
+                : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <HardDrive className="w-4 h-4 inline mr-1" />
+            GCS Bucket
+          </button>
+        </div>
+      )}
+      {!isInline && (
+        <span className="text-xs text-gray-500" title="No size limit, no chunking">
+          {isGemini ? '(up to 2GB)' : '(requires bucket)'}
         </span>
       )}
 
@@ -122,7 +161,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
 
       {/* Vertex Config */}
       {!isGemini && (
-        <div className="flex items-center space-x-2">
+        <div className="flex items-center space-x-2 flex-wrap gap-y-2">
           <input
             type="text"
             placeholder="Project ID (optional)"
@@ -151,6 +190,30 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
               </option>
             ))}
           </select>
+          {/* GCS Bucket Name - only shown when GCS strategy is selected */}
+          {isGcs && (
+            <div
+              className={`flex items-center px-3 py-1.5 rounded-lg border ${
+                !(config as VertexConfig).gcsBucket
+                  ? 'border-red-300 bg-red-50'
+                  : 'border-gray-200 bg-gray-50'
+              }`}
+            >
+              <HardDrive className="w-4 h-4 text-gray-400 mr-2" />
+              <input
+                type="text"
+                placeholder="GCS Bucket Name"
+                value={(config as VertexConfig).gcsBucket || ''}
+                onChange={(e) =>
+                  onChange({
+                    ...config,
+                    gcsBucket: e.target.value,
+                  } as VertexConfig)
+                }
+                className="text-sm bg-transparent border-none focus:ring-0 w-36 placeholder-gray-400"
+              />
+            </div>
+          )}
         </div>
       )}
     </div>

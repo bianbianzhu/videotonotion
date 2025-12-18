@@ -7,7 +7,10 @@ export interface NoteSegment {
 }
 
 // Video analysis strategy selection
-export type VideoAnalysisStrategy = 'inline' | 'filesApi';
+// - 'inline': Chunk and base64 encode (works with both Gemini and Vertex AI)
+// - 'filesApi': Upload to Gemini Files API (Gemini API only, NOT Vertex AI)
+// - 'gcs': Upload to Google Cloud Storage (Vertex AI only)
+export type VideoAnalysisStrategy = 'inline' | 'filesApi' | 'gcs';
 
 export interface VideoMetadata {
   name: string;
@@ -24,18 +27,29 @@ export enum ProcessingStatus {
   EXTRACTING_FRAMES,
   COMPLETED,
   ERROR,
-  // Files API specific statuses
+  // Files API specific statuses (Gemini API only)
   UPLOADING_TO_FILES_API, // Uploading video to Gemini Files API
   PROCESSING_FILE,        // Waiting for file to become ACTIVE on Gemini servers
+  // GCS specific statuses (Vertex AI only)
+  UPLOADING_TO_GCS,       // Uploading video to Google Cloud Storage
 }
 
-// Files API upload progress tracking
+// Files API upload progress tracking (Gemini API only)
 export interface FilesApiUploadProgress {
   phase: 'uploading' | 'processing' | 'ready';
   uploadProgress?: number;      // 0-100 during upload phase
   processingStartTime?: number; // Timestamp when processing started (for elapsed time)
   fileName?: string;            // Gemini file name for status checks
   fileUri?: string;             // Gemini file URI for analysis
+}
+
+// GCS upload progress tracking (Vertex AI only)
+export interface GcsUploadProgress {
+  phase: 'uploading' | 'ready';
+  uploadProgress?: number;      // 0-100 during upload phase
+  gcsUri?: string;              // gs://bucket/path URI for analysis
+  bucketName?: string;          // GCS bucket name
+  objectName?: string;          // GCS object name (file path in bucket)
 }
 
 export interface ChunkInfo {
@@ -71,7 +85,9 @@ export interface VideoSession {
   chunks?: ChunkInfo[]; // Video chunks for large videos
   currentChunk?: number; // Current chunk being processed
   totalDuration?: number; // Total video duration in seconds
-  // Files API specific fields
+  // Files API specific fields (Gemini API only)
   filesApiUpload?: FilesApiUploadProgress; // Progress tracking for Files API upload
+  // GCS specific fields (Vertex AI only)
+  gcsUpload?: GcsUploadProgress;           // Progress tracking for GCS upload
   analysisStrategy?: VideoAnalysisStrategy; // Track which strategy was used
 }

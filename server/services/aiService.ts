@@ -8,7 +8,6 @@ import {
 } from "@google/genai";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
-import path from "path";
 
 /** A single note segment extracted from video analysis */
 
@@ -161,164 +160,38 @@ export async function analyzeVideoWithVertex(
 }
 
 // ============================================================================
-// Files API Support for Vertex AI
+// GCS Support for Vertex AI
 // ============================================================================
-
-// Files API configuration
-const FILES_API_POLL_INTERVAL_MS = 5000;
-const FILES_API_TIMEOUT_MS = 600000; // 10 minutes
-
-// Session storage for Files API uploads
-interface FilesApiSession {
-  fileName: string;
-  fileUri?: string;
-  state: 'PROCESSING' | 'ACTIVE' | 'FAILED';
-  filePath: string;
-  projectId: string;
-  location: string;
-  model: string;
-  mimeType: string;
-  createdAt: number;
-}
-
-const filesApiSessions = new Map<string, FilesApiSession>();
-
-// Cleanup old sessions (older than 1 hour)
-setInterval(() => {
-  const now = Date.now();
-  for (const [sessionId, session] of filesApiSessions) {
-    if (now - session.createdAt > 60 * 60 * 1000) {
-      filesApiSessions.delete(sessionId);
-    }
-  }
-}, 15 * 60 * 1000); // Run every 15 minutes
+// NOTE: Files API does NOT work with Vertex AI. Use GCS (Google Cloud Storage)
+// to upload videos and reference them via gs:// URIs in Vertex AI requests.
 
 /**
- * Get MIME type from file path
+ * Analyze video from a GCS URI using Vertex AI.
+ * This is the alternative to Files API for Vertex AI users.
+ *
+ * @param projectId - Google Cloud project ID
+ * @param location - Vertex AI location (e.g., 'us-central1')
+ * @param model - Model name (e.g., 'gemini-3-pro-preview')
+ * @param gcsUri - GCS URI in format gs://bucket/path/to/video.mp4
+ * @param mimeType - Video MIME type
+ * @returns Array of note segments with timestamps and content
  */
-function getMimeTypeFromPath(filePath: string): string {
-  const ext = path.extname(filePath).toLowerCase();
-  const mimeTypes: Record<string, string> = {
-    '.mp4': 'video/mp4',
-    '.webm': 'video/webm',
-    '.mov': 'video/quicktime',
-    '.avi': 'video/x-msvideo',
-    '.mkv': 'video/x-matroska',
-    '.3gp': 'video/3gpp',
-  };
-  return mimeTypes[ext] || 'video/mp4';
-}
-
-/**
- * Upload video to Gemini Files API via Vertex AI
- */
-export async function uploadVideoToFilesApi(
-  filePath: string,
-  sessionId: string,
+export async function analyzeVideoWithGcs(
   projectId: string,
   location: string,
-  model: string
-): Promise<{ fileName: string; sessionId: string }> {
+  model: string,
+  gcsUri: string,
+  mimeType: string
+): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
   const visionModel = model || process.env.VERTEX_AI_MODEL || "gemini-3-pro-preview";
 
+  // Initialize with Vertex AI backend
   const ai = new GoogleGenAI({
     vertexai: true,
     project: project || "my-project",
     location: region || "global",
-  });
-
-  const mimeType = getMimeTypeFromPath(filePath);
-
-  const uploadedFile = await ai.files.upload({
-    file: filePath,
-    config: {
-      mimeType,
-      displayName: path.basename(filePath),
-    },
-  });
-
-  // Store session for polling
-  filesApiSessions.set(sessionId, {
-    fileName: uploadedFile.name!,
-    state: uploadedFile.state?.toString() === 'ACTIVE' ? 'ACTIVE' : 'PROCESSING',
-    fileUri: uploadedFile.uri,
-    filePath,
-    projectId: project!,
-    location: region!,
-    model: visionModel,
-    mimeType,
-    createdAt: Date.now(),
-  });
-
-  return { fileName: uploadedFile.name!, sessionId };
-}
-
-/**
- * Get file processing status
- */
-export async function getFileStatus(sessionId: string): Promise<{
-  state: string;
-  uri?: string;
-}> {
-  const session = filesApiSessions.get(sessionId);
-  if (!session) {
-    throw new Error('Session not found');
-  }
-
-  // If already ACTIVE or FAILED, return cached state
-  if (session.state === 'ACTIVE') {
-    return { state: 'ACTIVE', uri: session.fileUri };
-  }
-  if (session.state === 'FAILED') {
-    return { state: 'FAILED' };
-  }
-
-  // Poll Gemini for current status
-  const ai = new GoogleGenAI({
-    vertexai: true,
-    project: session.projectId,
-    location: session.location,
-  });
-
-  const file = await ai.files.get({ name: session.fileName });
-
-  if (file.state?.toString() === 'ACTIVE') {
-    session.state = 'ACTIVE';
-    session.fileUri = file.uri;
-    filesApiSessions.set(sessionId, session);
-    return { state: 'ACTIVE', uri: session.fileUri };
-  } else if (file.state?.toString() === 'FAILED') {
-    session.state = 'FAILED';
-    filesApiSessions.set(sessionId, session);
-    return { state: 'FAILED' };
-  }
-
-  return { state: 'PROCESSING' };
-}
-
-/**
- * Analyze video using Files API reference
- */
-export async function analyzeWithFilesApi(sessionId: string): Promise<NoteSegment[]> {
-  const session = filesApiSessions.get(sessionId);
-  if (!session) {
-    throw new Error('Session not found');
-  }
-
-  if (session.state !== 'ACTIVE') {
-    throw new Error('File not ready for analysis. Current state: ' + session.state);
-  }
-
-  if (!session.fileUri) {
-    throw new Error('File URI not available');
-  }
-
-  const ai = new GoogleGenAI({
-    vertexai: true,
-    project: session.projectId,
-    location: session.location,
   });
 
   const prompt = buildAnalysisPrompt(); // No chunk context for full video
@@ -331,9 +204,9 @@ export async function analyzeWithFilesApi(sessionId: string): Promise<NoteSegmen
   };
 
   const response = await ai.models.generateContent({
-    model: session.model,
+    model: visionModel,
     contents: createUserContent([
-      createPartFromUri(session.fileUri, session.mimeType),
+      createPartFromUri(gcsUri, mimeType),
       prompt,
     ]),
     config,
@@ -342,15 +215,7 @@ export async function analyzeWithFilesApi(sessionId: string): Promise<NoteSegmen
   const text = response.text;
 
   if (!text) {
-    throw new Error("No response text from Vertex AI Files API");
-  }
-
-  // Cleanup: Delete the uploaded file
-  try {
-    await ai.files.delete({ name: session.fileName });
-    filesApiSessions.delete(sessionId);
-  } catch (e) {
-    console.warn('Failed to cleanup uploaded file:', e);
+    throw new Error("No response text from Vertex AI with GCS");
   }
 
   return responseSchema.parse(JSON.parse(text));

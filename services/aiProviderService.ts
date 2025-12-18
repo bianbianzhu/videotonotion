@@ -1,12 +1,12 @@
-import { NoteSegment, ChunkContext, VideoAnalysisStrategy, FilesApiUploadProgress } from '../types';
+import { NoteSegment, ChunkContext, FilesApiUploadProgress, GcsUploadProgress } from '../types';
 import { generateNotesFromVideoGemini, generateNotesFromVideoWithFilesApi } from './geminiService';
-import { generateNotesFromVideoVertex, generateNotesFromVideoVertexFilesApi } from './vertexService';
+import { generateNotesFromVideoVertex, generateNotesFromVideoVertexGcs } from './vertexService';
 
 export interface GeminiConfig {
   provider: 'gemini';
   apiKey: string;
   model?: string;
-  strategy: VideoAnalysisStrategy;
+  strategy: 'inline' | 'filesApi';  // Files API only works with Gemini
 }
 
 export interface VertexConfig {
@@ -14,17 +14,26 @@ export interface VertexConfig {
   projectId: string;
   location: string;
   model?: string;
-  strategy: VideoAnalysisStrategy;
+  strategy: 'inline' | 'gcs';       // GCS only works with Vertex AI (Files API NOT supported)
+  gcsBucket?: string;               // Required when strategy is 'gcs'
 }
 
 export type AIConfig = GeminiConfig | VertexConfig;
 
 export interface AIProvider {
   generateNotesFromVideo(base64Data: string, mimeType: string, chunkContext?: ChunkContext): Promise<NoteSegment[]>;
+  // Gemini Files API (only works with Gemini, NOT Vertex AI)
   generateNotesFromVideoWithFilesApi(
     file: File | Blob,
     mimeType: string,
     onProgress?: (progress: FilesApiUploadProgress) => void
+  ): Promise<NoteSegment[]>;
+  // GCS upload (only works with Vertex AI)
+  generateNotesFromVideoWithGcs(
+    file: File | Blob,
+    mimeType: string,
+    bucketName: string,
+    onProgress?: (progress: GcsUploadProgress) => void
   ): Promise<NoteSegment[]>;
 }
 
@@ -44,23 +53,36 @@ export function createAIProvider(config: AIConfig): AIProvider {
         );
       }
     },
+    // Files API only works with Gemini (NOT Vertex AI)
     async generateNotesFromVideoWithFilesApi(
       file: File | Blob,
       mimeType: string,
       onProgress?: (progress: FilesApiUploadProgress) => void
     ): Promise<NoteSegment[]> {
-      if (config.provider === 'gemini') {
-        return generateNotesFromVideoWithFilesApi(config.apiKey, file, mimeType, config.model, onProgress);
-      } else {
-        return generateNotesFromVideoVertexFilesApi(
-          config.projectId,
-          config.location,
-          file,
-          mimeType,
-          config.model,
-          onProgress
-        );
+      if (config.provider !== 'gemini') {
+        throw new Error('Files API is only supported with Gemini API. Use GCS for Vertex AI.');
       }
+      return generateNotesFromVideoWithFilesApi(config.apiKey, file, mimeType, config.model, onProgress);
+    },
+    // GCS only works with Vertex AI
+    async generateNotesFromVideoWithGcs(
+      file: File | Blob,
+      mimeType: string,
+      bucketName: string,
+      onProgress?: (progress: GcsUploadProgress) => void
+    ): Promise<NoteSegment[]> {
+      if (config.provider !== 'vertex') {
+        throw new Error('GCS upload is only supported with Vertex AI. Use Files API for Gemini.');
+      }
+      return generateNotesFromVideoVertexGcs(
+        config.projectId,
+        config.location,
+        file,
+        mimeType,
+        bucketName,
+        config.model,
+        onProgress
+      );
     },
   };
 }
@@ -72,6 +94,10 @@ export function isConfigValid(config: AIConfig | null): boolean {
     return Boolean(config.apiKey && config.apiKey.length > 0);
   } else {
     // Vertex: projectId is optional (falls back to env vars), location has default
+    // But if GCS strategy is selected, bucket name is required
+    if (config.strategy === 'gcs' && !config.gcsBucket) {
+      return false;
+    }
     return true;
   }
 }

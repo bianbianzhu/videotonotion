@@ -3,6 +3,7 @@
 Read and understand relevant files before proposing edits. Don't speculate about the code if you haven't read the files.
 
 **ALWAYS use `gemini-3-pro-preview` as the model.**
+**ALWAYS UPDATE the README.md, CLAUDE.md, and any other documentation files under the `/docs` directory when making important changes, especially when adding new features or fixing bugs.**
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -22,20 +23,20 @@ videotonotion/
 
 ### Development
 
-| Command | Description |
-|---------|-------------|
-| `pnpm run install:all` | Install all dependencies (frontend + backend) |
-| `pnpm run dev` | Run frontend (port 3000) + backend (port 3001) concurrently |
-| `pnpm run dev:client` | Run frontend only |
-| `pnpm run dev:server` | Run backend only |
+| Command                | Description                                                 |
+| ---------------------- | ----------------------------------------------------------- |
+| `pnpm run install:all` | Install all dependencies (frontend + backend)               |
+| `pnpm run dev`         | Run frontend (port 3000) + backend (port 3001) concurrently |
+| `pnpm run dev:client`  | Run frontend only                                           |
+| `pnpm run dev:server`  | Run backend only                                            |
 
 ### Production
 
-| Command | Description |
-|---------|-------------|
-| `pnpm run build` | Build frontend with Vite |
-| `pnpm run build:server` | Build backend with TypeScript |
-| `pnpm run preview` | Preview production frontend build |
+| Command                 | Description                       |
+| ----------------------- | --------------------------------- |
+| `pnpm run build`        | Build frontend with Vite          |
+| `pnpm run build:server` | Build backend with TypeScript     |
+| `pnpm run preview`      | Preview production frontend build |
 
 ## Environment Variables
 
@@ -71,13 +72,26 @@ This is a full-stack application that converts video lectures into structured No
 Frontend (React + Vite, Port 3000)
     │
     ├── Direct Gemini API calls (with API key)
+    │   └── Files API (for large videos up to 2GB)
     │
     └── Vite Proxy (/api/*) ──► Backend (Express, Port 3001)
                                     │
                                     ├── YouTube download (yt-dlp)
                                     ├── Video chunking (ffmpeg)
-                                    └── Vertex AI proxy
+                                    ├── Vertex AI proxy (inline analysis)
+                                    └── GCS upload → Vertex AI (for large videos)
 ```
+
+### Video Analysis Strategies
+
+| Provider | Strategy | Description |
+|----------|----------|-------------|
+| Gemini API | Inline | Chunks large videos, processes sequentially |
+| Gemini API | Files API | Uploads entire video (up to 2GB) |
+| Vertex AI | Inline | Chunks large videos, processes sequentially |
+| Vertex AI | GCS Bucket | Uploads to GCS, references via `gs://` URI |
+
+**IMPORTANT:** Files API does NOT work with Vertex AI. Use GCS bucket strategy for large videos with Vertex AI.
 
 ### Core Flow
 
@@ -90,29 +104,30 @@ Frontend (React + Vite, Port 3000)
 
 ### Key Files - Frontend
 
-| File | Purpose |
-|------|---------|
-| `App.tsx` | Main state management, orchestrates pipeline |
-| `components/VideoInput.tsx` | File upload and URL input UI |
-| `components/NotesPreview.tsx` | Rendered notes display and export |
-| `components/ProviderSelector.tsx` | AI provider configuration |
-| `services/geminiService.ts` | Direct Gemini API integration |
-| `services/vertexService.ts` | Vertex AI via backend proxy |
-| `services/youtubeApiService.ts` | YouTube backend communication |
-| `utils/videoUtils.ts` | Base64 conversion, canvas frame extraction |
-| `types.ts` | Core interfaces: `NoteSegment`, `VideoSession`, `ProcessingStatus` |
-| `constants.ts` | Model config, video size limits |
+| File                              | Purpose                                                            |
+| --------------------------------- | ------------------------------------------------------------------ |
+| `App.tsx`                         | Main state management, orchestrates pipeline                       |
+| `components/VideoInput.tsx`       | File upload and URL input UI                                       |
+| `components/NotesPreview.tsx`     | Rendered notes display and export                                  |
+| `components/ProviderSelector.tsx` | AI provider configuration                                          |
+| `services/geminiService.ts`       | Direct Gemini API integration                                      |
+| `services/vertexService.ts`       | Vertex AI via backend proxy                                        |
+| `services/youtubeApiService.ts`   | YouTube backend communication                                      |
+| `utils/videoUtils.ts`             | Base64 conversion, canvas frame extraction                         |
+| `types.ts`                        | Core interfaces: `NoteSegment`, `VideoSession`, `ProcessingStatus` |
+| `constants.ts`                    | Model config, video size limits                                    |
 
 ### Key Files - Backend
 
-| File | Purpose |
-|------|---------|
-| `server/index.ts` | Express server entry point |
-| `server/routes/youtube.ts` | YouTube download/chunk endpoints |
-| `server/routes/ai.ts` | Vertex AI proxy endpoint |
-| `server/services/ytdlpService.ts` | yt-dlp wrapper |
-| `server/services/chunkService.ts` | ffmpeg video chunking |
-| `server/services/aiService.ts` | Vertex AI integration |
+| File                              | Purpose                              |
+| --------------------------------- | ------------------------------------ |
+| `server/index.ts`                 | Express server entry point           |
+| `server/routes/youtube.ts`        | YouTube download/chunk endpoints     |
+| `server/routes/ai.ts`             | Vertex AI proxy + GCS endpoints      |
+| `server/services/ytdlpService.ts` | yt-dlp wrapper                       |
+| `server/services/chunkService.ts` | ffmpeg video chunking                |
+| `server/services/aiService.ts`    | Vertex AI integration                |
+| `server/services/gcsService.ts`   | Google Cloud Storage operations      |
 
 ### State Model
 
@@ -120,8 +135,13 @@ Frontend (React + Vite, Port 3000)
 
 ```
 IDLE → DOWNLOADING → READY → UPLOADING → ANALYZING → EXTRACTING_FRAMES → COMPLETED
-                                                                        ↘ ERROR
+                          ↘ UPLOADING_TO_FILES_API ↗                    ↘ ERROR
+                          ↘ UPLOADING_TO_GCS ──────↗
 ```
+
+**Strategy-specific states:**
+- `UPLOADING_TO_FILES_API`: Gemini Files API upload in progress
+- `UPLOADING_TO_GCS`: GCS bucket upload in progress (Vertex AI only)
 
 ### Storage
 

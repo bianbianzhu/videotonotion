@@ -1,5 +1,5 @@
-import { NoteSegment, ChunkContext, FilesApiUploadProgress } from '../types';
-import { VERTEX_DEFAULT_MODEL, VERTEX_DEFAULT_LOCATION, FILES_API_POLL_INTERVAL_MS, FILES_API_TIMEOUT_MS } from '../constants';
+import { NoteSegment, ChunkContext, GcsUploadProgress } from '../types';
+import { VERTEX_DEFAULT_MODEL, VERTEX_DEFAULT_LOCATION } from '../constants';
 
 const API_BASE = '/api/ai';
 
@@ -34,13 +34,13 @@ export const generateNotesFromVideoVertex = async (
 };
 
 /**
- * Helper function to upload file with progress tracking
+ * Helper function to upload file to GCS with progress tracking
  */
-async function uploadWithProgress(
+async function uploadToGcsWithProgress(
   url: string,
   formData: FormData,
   onProgress: (progress: number) => void
-): Promise<{ fileName: string; sessionId: string }> {
+): Promise<{ gcsUri: string; sessionId: string }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
 
@@ -60,15 +60,15 @@ async function uploadWithProgress(
       } else {
         try {
           const error = JSON.parse(xhr.responseText);
-          reject(new Error(error.error || 'Upload failed'));
+          reject(new Error(error.error || 'GCS upload failed'));
         } catch {
-          reject(new Error(`Upload failed: ${xhr.statusText}`));
+          reject(new Error(`GCS upload failed: ${xhr.statusText}`));
         }
       }
     });
 
-    xhr.addEventListener('error', () => reject(new Error('Network error during upload')));
-    xhr.addEventListener('abort', () => reject(new Error('Upload aborted')));
+    xhr.addEventListener('error', () => reject(new Error('Network error during GCS upload')));
+    xhr.addEventListener('abort', () => reject(new Error('GCS upload aborted')));
 
     xhr.open('POST', url);
     xhr.send(formData);
@@ -76,87 +76,75 @@ async function uploadWithProgress(
 }
 
 /**
- * Poll backend for file processing status
+ * Generate notes from video using Vertex AI with GCS bucket.
+ * Uploads video to Google Cloud Storage, then analyzes via Vertex AI.
+ *
+ * NOTE: Files API does NOT work with Vertex AI. Use this GCS-based approach instead.
  */
-async function pollFileStatus(sessionId: string): Promise<{ state: string; uri?: string }> {
-  const response = await fetch(`${API_BASE}/vertex/files/status/${sessionId}`);
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Failed to get file status');
-  }
-  return response.json();
-}
-
-/**
- * Generate notes from video using Vertex AI Files API via backend.
- * Uploads entire video (up to 2GB) without chunking.
- */
-export const generateNotesFromVideoVertexFilesApi = async (
+export const generateNotesFromVideoVertexGcs = async (
   projectId: string,
   location: string,
   file: File | Blob,
   mimeType: string,
+  bucketName: string,
   model?: string,
-  onProgress?: (progress: FilesApiUploadProgress) => void
+  onProgress?: (progress: GcsUploadProgress) => void
 ): Promise<NoteSegment[]> => {
-  // Phase 1: Upload file to backend
+  if (!bucketName) {
+    throw new Error('GCS bucket name is required for Vertex AI GCS strategy');
+  }
+
+  // Phase 1: Upload file to GCS via backend
   onProgress?.({ phase: 'uploading', uploadProgress: 0 });
 
   const formData = new FormData();
   formData.append('video', file);
+  formData.append('bucketName', bucketName);
   formData.append('projectId', projectId || '');
   formData.append('location', location || VERTEX_DEFAULT_LOCATION);
   formData.append('model', model || VERTEX_DEFAULT_MODEL);
 
-  const uploadResponse = await uploadWithProgress(
-    `${API_BASE}/vertex/files/upload`,
+  const uploadResponse = await uploadToGcsWithProgress(
+    `${API_BASE}/vertex/gcs/upload`,
     formData,
     (progress) => onProgress?.({ phase: 'uploading', uploadProgress: progress })
   );
 
-  const { fileName, sessionId } = uploadResponse;
-
-  onProgress?.({
-    phase: 'processing',
-    fileName,
-    processingStartTime: Date.now(),
-  });
-
-  // Phase 2: Poll backend for file status
-  const startTime = Date.now();
-  let status = await pollFileStatus(sessionId);
-
-  while (status.state !== 'ACTIVE') {
-    if (Date.now() - startTime > FILES_API_TIMEOUT_MS) {
-      throw new Error(`File processing timeout after ${FILES_API_TIMEOUT_MS / 1000}s. Try using Inline strategy.`);
-    }
-
-    if (status.state === 'FAILED') {
-      throw new Error('File processing failed on Vertex AI servers. Try using Inline strategy.');
-    }
-
-    await new Promise(r => setTimeout(r, FILES_API_POLL_INTERVAL_MS));
-    status = await pollFileStatus(sessionId);
-  }
+  const { gcsUri, sessionId } = uploadResponse;
 
   onProgress?.({
     phase: 'ready',
-    fileName,
-    fileUri: status.uri,
+    gcsUri,
+    bucketName,
   });
 
-  // Phase 3: Trigger analysis
-  const response = await fetch(`${API_BASE}/vertex/files/analyze`, {
+  // Phase 2: Trigger analysis with GCS URI
+  const response = await fetch(`${API_BASE}/vertex/gcs/analyze`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId }),
+    body: JSON.stringify({
+      sessionId,
+      gcsUri,
+      projectId,
+      location: location || VERTEX_DEFAULT_LOCATION,
+      model: model || VERTEX_DEFAULT_MODEL,
+      mimeType,
+    }),
   });
 
   if (!response.ok) {
     const error = await response.json();
-    throw new Error(error.error || 'Vertex AI Files API analysis failed');
+    throw new Error(error.error || 'Vertex AI GCS analysis failed');
   }
 
   const result = await response.json();
+
+  // Phase 3: Cleanup GCS file (best effort, don't fail if this errors)
+  try {
+    await fetch(`${API_BASE}/vertex/gcs/${sessionId}`, { method: 'DELETE' });
+  } catch {
+    console.warn('Failed to cleanup GCS file, it will be auto-cleaned later');
+  }
+
   return result.segments as NoteSegment[];
 };

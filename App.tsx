@@ -5,8 +5,8 @@ import ProcessingView from './components/ProcessingView';
 import NotesPreview from './components/NotesPreview';
 import Sidebar from './components/Sidebar';
 import ProviderSelector from './components/ProviderSelector';
-import { NoteSegment, ProcessingStatus, VideoSession, ChunkContext, FilesApiUploadProgress } from './types';
-import { createAIProvider, AIConfig, isConfigValid, getDefaultConfig } from './services/aiProviderService';
+import { NoteSegment, ProcessingStatus, VideoSession, ChunkContext, FilesApiUploadProgress, GcsUploadProgress } from './types';
+import { createAIProvider, AIConfig, isConfigValid, getDefaultConfig, VertexConfig } from './services/aiProviderService';
 import { fileToBase64, extractFrameFromVideo } from './utils/videoUtils';
 import {
   isYouTubeUrl,
@@ -222,7 +222,8 @@ const App: React.FC = () => {
     if (!selectedSession || !isConfigReady) return;
 
     const provider = createAIProvider(aiConfig);
-    const useFilesApi = aiConfig.strategy === 'filesApi';
+    const useFilesApi = aiConfig.provider === 'gemini' && aiConfig.strategy === 'filesApi';
+    const useGcs = aiConfig.provider === 'vertex' && aiConfig.strategy === 'gcs';
 
     try {
       let allSegments: NoteSegment[] = [];
@@ -294,6 +295,74 @@ const App: React.FC = () => {
               updateSession(selectedSession.id, {
                 status: ProcessingStatus.ANALYZING,
                 filesApiUpload: progress,
+              });
+            }
+          }
+        );
+
+      } else if (useGcs) {
+        // ========================================
+        // GCS FLOW - Upload to GCS, analyze with Vertex AI
+        // NOTE: Files API does NOT work with Vertex AI, use GCS instead
+        // ========================================
+
+        const gcsBucket = (aiConfig as VertexConfig).gcsBucket;
+        if (!gcsBucket) {
+          throw new Error('GCS bucket name is required for Vertex AI GCS strategy');
+        }
+
+        // Get the video file
+        let videoFile: File | Blob;
+        let mimeType: string;
+
+        if (selectedSession.file) {
+          videoFile = selectedSession.file;
+          mimeType = videoFile instanceof File ? videoFile.type || 'video/mp4' : 'video/mp4';
+          videoUrlForFrames = URL.createObjectURL(selectedSession.file);
+        } else if (selectedSession.youtubeSessionId) {
+          // For YouTube, fetch the full video as blob
+          updateSession(selectedSession.id, {
+            status: ProcessingStatus.DOWNLOADING,
+            progress: 0,
+          });
+
+          const response = await fetch(getFullVideoUrl(selectedSession.youtubeSessionId));
+          if (!response.ok) throw new Error('Failed to fetch YouTube video');
+          videoFile = await response.blob();
+          mimeType = 'video/mp4';
+          videoUrlForFrames = getFullVideoUrl(selectedSession.youtubeSessionId);
+        } else if (selectedSession.uploadSessionId) {
+          // For uploaded videos, fetch the full video as blob
+          updateSession(selectedSession.id, {
+            status: ProcessingStatus.DOWNLOADING,
+            progress: 0,
+          });
+
+          const response = await fetch(getUploadedVideoUrl(selectedSession.uploadSessionId));
+          if (!response.ok) throw new Error('Failed to fetch uploaded video');
+          videoFile = await response.blob();
+          mimeType = 'video/mp4';
+          videoUrlForFrames = getUploadedVideoUrl(selectedSession.uploadSessionId);
+        } else {
+          throw new Error('No video file available');
+        }
+
+        // Use GCS method with progress tracking
+        allSegments = await provider.generateNotesFromVideoWithGcs(
+          videoFile,
+          mimeType,
+          gcsBucket,
+          (progress: GcsUploadProgress) => {
+            if (progress.phase === 'uploading') {
+              updateSession(selectedSession.id, {
+                status: ProcessingStatus.UPLOADING_TO_GCS,
+                progress: progress.uploadProgress,
+                gcsUpload: progress,
+              });
+            } else if (progress.phase === 'ready') {
+              updateSession(selectedSession.id, {
+                status: ProcessingStatus.ANALYZING,
+                gcsUpload: progress,
               });
             }
           }
@@ -587,13 +656,16 @@ const App: React.FC = () => {
                   <h2 className="text-2xl font-bold text-gray-900 mb-4">Video Ready</h2>
                   <p className="text-gray-500 mb-2 max-w-md mx-auto">
                     {aiConfig.strategy === 'filesApi'
-                      ? 'Video will be uploaded and processed as a single file.'
-                      : selectedSession.chunks
-                        ? `Video will be processed in ${selectedSession.chunks.length} chunk(s).`
-                        : 'The video is loaded and ready to process.'}
+                      ? 'Video will be uploaded to Gemini Files API and processed as a single file.'
+                      : aiConfig.strategy === 'gcs'
+                        ? 'Video will be uploaded to GCS bucket and processed via Vertex AI.'
+                        : selectedSession.chunks
+                          ? `Video will be processed in ${selectedSession.chunks.length} chunk(s).`
+                          : 'The video is loaded and ready to process.'}
                   </p>
                   <p className="text-gray-400 text-sm mb-8">
-                    Using {aiConfig.provider === 'gemini' ? 'Gemini API' : 'Vertex AI'} with {aiConfig.strategy === 'filesApi' ? 'Files API' : 'Inline'} strategy
+                    Using {aiConfig.provider === 'gemini' ? 'Gemini API' : 'Vertex AI'} with{' '}
+                    {aiConfig.strategy === 'filesApi' ? 'Files API' : aiConfig.strategy === 'gcs' ? 'GCS Bucket' : 'Inline'} strategy
                   </p>
                   <button
                     onClick={handleProcessSession}
@@ -607,25 +679,28 @@ const App: React.FC = () => {
                     <p className="text-xs text-red-500 mt-3">
                       {aiConfig.provider === 'gemini'
                         ? 'API Key required'
-                        : 'Project ID required'}
+                        : aiConfig.strategy === 'gcs' && !(aiConfig as VertexConfig).gcsBucket
+                          ? 'GCS Bucket name required'
+                          : 'Configure Vertex AI settings above'}
                     </p>
                   )}
                 </div>
               )}
 
-              {/* Status: Processing (Files API or Inline with chunks) */}
+              {/* Status: Processing (Files API, GCS, or Inline with chunks) */}
               {(selectedSession.status === ProcessingStatus.ANALYZING ||
                 selectedSession.status === ProcessingStatus.EXTRACTING_FRAMES ||
                 selectedSession.status === ProcessingStatus.UPLOADING_TO_FILES_API ||
                 selectedSession.status === ProcessingStatus.PROCESSING_FILE ||
+                selectedSession.status === ProcessingStatus.UPLOADING_TO_GCS ||
                 (selectedSession.status === ProcessingStatus.UPLOADING && selectedSession.chunks)) && (
                 <div className="py-10">
                   <ProcessingView status={selectedSession.status} />
 
-                  {/* Files API progress */}
+                  {/* Files API progress (Gemini only) */}
                   {selectedSession.status === ProcessingStatus.UPLOADING_TO_FILES_API && (
                     <div className="text-center mt-4">
-                      <p className="text-gray-500">Uploading video to Gemini...</p>
+                      <p className="text-gray-500">Uploading video to Gemini Files API...</p>
                       {selectedSession.progress !== undefined && (
                         <div className="w-64 bg-gray-200 rounded-full h-2 mt-2 mx-auto">
                           <div
@@ -638,7 +713,23 @@ const App: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Files API processing */}
+                  {/* GCS upload progress (Vertex AI only) */}
+                  {selectedSession.status === ProcessingStatus.UPLOADING_TO_GCS && (
+                    <div className="text-center mt-4">
+                      <p className="text-gray-500">Uploading video to GCS bucket...</p>
+                      {selectedSession.progress !== undefined && (
+                        <div className="w-64 bg-gray-200 rounded-full h-2 mt-2 mx-auto">
+                          <div
+                            className="bg-blue-600 h-2 rounded-full transition-all"
+                            style={{ width: `${selectedSession.progress}%` }}
+                          />
+                        </div>
+                      )}
+                      <p className="text-xs text-gray-400 mt-2">{selectedSession.progress ?? 0}% uploaded</p>
+                    </div>
+                  )}
+
+                  {/* Files API processing (Gemini only) */}
                   {selectedSession.status === ProcessingStatus.PROCESSING_FILE && (
                     <div className="text-center mt-4">
                       <p className="text-gray-500">Processing video on Gemini servers...</p>
