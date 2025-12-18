@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { analyzeVideoWithVertex, analyzeVideoWithGcs } from '../services/aiService.js';
+import { analyzeVideoVertexInline, analyzeVideoVertexGcs } from '../services/aiService.js';
 import { uploadToGcs, deleteFromGcs } from '../services/gcsService.js';
 
 const router: Router = Router();
@@ -109,7 +109,7 @@ router.post('/vertex/analyze', async (req: Request, res: Response) => {
       return;
     }
 
-    const segments = await analyzeVideoWithVertex(
+    const segments = await analyzeVideoVertexInline(
       projectId,
       location,
       model || 'gemini-3-pro-preview',
@@ -240,7 +240,7 @@ router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
 
     console.log(`Analyzing video from GCS: ${analysisGcsUri}`);
 
-    const segments = await analyzeVideoWithGcs(
+    const segments = await analyzeVideoVertexGcs(
       analysisProjectId || '',
       analysisLocation || 'us-central1',
       analysisModel || 'gemini-3-pro-preview',

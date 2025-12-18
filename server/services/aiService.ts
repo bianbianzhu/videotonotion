@@ -105,7 +105,7 @@ ${previousTopics && previousTopics.length > 0
  * @param chunkContext - Optional context for chunked video processing
  * @returns Array of note segments with timestamps and content
  */
-export async function analyzeVideoWithVertex(
+export async function analyzeVideoVertexInline(
   projectId: string,
   location: string,
   model: string,
@@ -176,7 +176,7 @@ export async function analyzeVideoWithVertex(
  * @param mimeType - Video MIME type
  * @returns Array of note segments with timestamps and content
  */
-export async function analyzeVideoWithGcs(
+export async function analyzeVideoVertexGcs(
   projectId: string,
   location: string,
   model: string,
