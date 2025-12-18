@@ -148,7 +148,9 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
   try {
     const file = req.file;
     const sessionId = (req as any).gcsSessionId;
-    const { bucketName, projectId, location, model } = req.body;
+    const { bucketName: requestBucketName, projectId, location, model } = req.body;
+    // Use env var as fallback if no bucket name provided
+    const bucketName = requestBucketName || process.env.GCS_BUCKET_NAME;
 
     if (!file || !sessionId) {
       res.status(400).json({ error: 'No video file uploaded' });
@@ -156,7 +158,7 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
     }
 
     if (!bucketName) {
-      res.status(400).json({ error: 'GCS bucket name is required' });
+      res.status(400).json({ error: 'GCS bucket name is required. Set GCS_BUCKET_NAME in server/.env or provide it in the request.' });
       return;
     }
 

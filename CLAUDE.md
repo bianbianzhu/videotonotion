@@ -58,6 +58,7 @@ VERTEX_AI_PROJECT_ID=your_project    # Required for Vertex AI
 VERTEX_AI_LOCATION=us-central1       # Required for Vertex AI
 VERTEX_AI_MODEL=gemini-3-pro-preview # Optional
 CHUNK_SIZE_MB=15                     # Optional - video chunk size (default: 15)
+GCS_BUCKET_NAME=bucket_name          # Optional - default GCS bucket for Vertex AI GCS strategy
 ```
 
 > **Note:** Smaller chunk sizes (e.g., 5-10MB) reduce tokens per API request, helping avoid 429 rate limit errors.
