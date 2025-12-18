@@ -306,10 +306,8 @@ const App: React.FC = () => {
         // NOTE: Files API does NOT work with Vertex AI, use GCS instead
         // ========================================
 
-        const gcsBucket = (aiConfig as VertexConfig).gcsBucket;
-        if (!gcsBucket) {
-          throw new Error('GCS bucket name is required for Vertex AI GCS strategy');
-        }
+        // gcsBucket is optional - server uses GCS_BUCKET_NAME env var as fallback
+        const gcsBucket = (aiConfig as VertexConfig).gcsBucket || '';
 
         // Get the video file
         let videoFile: File | Blob;
@@ -679,9 +677,7 @@ const App: React.FC = () => {
                     <p className="text-xs text-red-500 mt-3">
                       {aiConfig.provider === 'gemini'
                         ? 'API Key required'
-                        : aiConfig.strategy === 'gcs' && !(aiConfig as VertexConfig).gcsBucket
-                          ? 'GCS Bucket name required'
-                          : 'Configure Vertex AI settings above'}
+                        : 'Configure Vertex AI settings above'}
                     </p>
                   )}
                 </div>

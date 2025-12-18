@@ -90,16 +90,15 @@ export const generateNotesFromVideoVertexGcs = async (
   model?: string,
   onProgress?: (progress: GcsUploadProgress) => void
 ): Promise<NoteSegment[]> => {
-  if (!bucketName) {
-    throw new Error('GCS bucket name is required for Vertex AI GCS strategy');
-  }
-
   // Phase 1: Upload file to GCS via backend
+  // bucketName is optional - server uses GCS_BUCKET_NAME env var as fallback
   onProgress?.({ phase: 'uploading', uploadProgress: 0 });
 
   const formData = new FormData();
   formData.append('video', file);
-  formData.append('bucketName', bucketName);
+  if (bucketName) {
+    formData.append('bucketName', bucketName);
+  }
   formData.append('projectId', projectId || '');
   formData.append('location', location || VERTEX_DEFAULT_LOCATION);
   formData.append('model', model || VERTEX_DEFAULT_MODEL);

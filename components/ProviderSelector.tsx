@@ -190,19 +190,13 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
               </option>
             ))}
           </select>
-          {/* GCS Bucket Name - only shown when GCS strategy is selected */}
+          {/* GCS Bucket Name - optional, server uses GCS_BUCKET_NAME env var as fallback */}
           {isGcs && (
-            <div
-              className={`flex items-center px-3 py-1.5 rounded-lg border ${
-                !(config as VertexConfig).gcsBucket
-                  ? 'border-red-300 bg-red-50'
-                  : 'border-gray-200 bg-gray-50'
-              }`}
-            >
+            <div className="flex items-center px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50">
               <HardDrive className="w-4 h-4 text-gray-400 mr-2" />
               <input
                 type="text"
-                placeholder="GCS Bucket Name"
+                placeholder="GCS Bucket (optional)"
                 value={(config as VertexConfig).gcsBucket || ''}
                 onChange={(e) =>
                   onChange({
@@ -210,7 +204,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
                     gcsBucket: e.target.value,
                   } as VertexConfig)
                 }
-                className="text-sm bg-transparent border-none focus:ring-0 w-36 placeholder-gray-400"
+                className="text-sm bg-transparent border-none focus:ring-0 w-40 placeholder-gray-400"
               />
             </div>
           )}

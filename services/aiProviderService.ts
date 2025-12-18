@@ -94,10 +94,7 @@ export function isConfigValid(config: AIConfig | null): boolean {
     return Boolean(config.apiKey && config.apiKey.length > 0);
   } else {
     // Vertex: projectId is optional (falls back to env vars), location has default
-    // But if GCS strategy is selected, bucket name is required
-    if (config.strategy === 'gcs' && !config.gcsBucket) {
-      return false;
-    }
+    // GCS bucket is optional - server uses GCS_BUCKET_NAME env var as fallback
     return true;
   }
 }
