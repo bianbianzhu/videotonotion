@@ -1,6 +1,95 @@
-# Gemini Video Upload Patterns
+# Gemini Files API (Direct API Key)
 
-Production-ready patterns for video analysis with the Gemini API.
+Use this reference when using **Gemini API key directly** (not Vertex AI). Files API is the recommended approach for large video analysis in this project.
+
+## Quick Start
+
+```typescript
+import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+
+// 1. Upload
+let file = await ai.files.upload({
+  file: "path/to/video.mp4", // File path or Blob
+  config: { mimeType: "video/mp4" },
+});
+
+// 2. Poll until ACTIVE
+while (!file.state || file.state.toString() !== "ACTIVE") {
+  await new Promise((r) => setTimeout(r, 5000));
+  file = await ai.files.get({ name: file.name });
+}
+
+// 3. Analyze
+const response = await ai.models.generateContent({
+  model: "gemini-3-pro-preview",
+  contents: createUserContent([
+    createPartFromUri(file.uri, file.mimeType),
+    "Describe this video",
+  ]),
+});
+```
+
+## Environment Setup
+
+```bash
+export GEMINI_API_KEY="your-api-key"
+```
+
+```bash
+npm install @google/genai
+```
+
+## API Methods
+
+```typescript
+// Upload file
+const file = await ai.files.upload({
+  file: string | Blob, // File path or Blob
+  config: {
+    mimeType: string, // Required MIME type: "video/mp4", "video/webm" and etc.
+    displayName?: string, // Optional display name for the file
+  },
+});
+
+// Get file metadata (for polling)
+const file = await ai.files.get({ name: file.name });
+
+// List uploaded files
+const files = await ai.files.list({ config: { pageSize: 10 } });
+
+// Delete file
+await ai.files.delete({ name: file.name });
+```
+
+## Limits
+
+| Limit | Value |
+|-------|-------|
+| Per-file max size | 2 GB |
+| Per-project storage | 20 GB |
+| File retention | 48 hours (auto-deleted) |
+| Cost | Free |
+
+## File States
+
+| State | Description |
+|-------|-------------|
+| `PROCESSING` | File is being processed server-side |
+| `ACTIVE` | File is ready for use in prompts |
+| `FAILED` | Processing failed (corrupt or unsupported file) |
+
+## Supported Video Formats
+
+| MIME Type | Extension |
+|-----------|-----------|
+| video/mp4 | .mp4 |
+| video/webm | .webm |
+| video/quicktime | .mov |
+| video/x-msvideo | .avi |
+| video/x-matroska | .mkv |
+| video/3gpp | .3gp |
 
 ## Complete Video Analyzer Class
 
@@ -9,7 +98,6 @@ import {
   GoogleGenAI,
   createUserContent,
   createPartFromUri,
-  type GenerateContentResponse,
 } from "@google/genai";
 
 interface VideoFile {
@@ -36,7 +124,7 @@ interface UploadOptions {
 }
 
 const DEFAULT_OPTIONS: Required<AnalyzeOptions> = {
-  model: "gemini-2.5-flash",
+  model: "gemini-3-pro-preview",
   timeoutMs: 300000, // 5 minutes
   pollIntervalMs: 5000, // 5 seconds
   deleteAfterAnalysis: false,
@@ -54,16 +142,15 @@ export class GeminiVideoAnalyzer {
   /**
    * Upload a video file to Gemini Files API
    */
-  async upload(filePath: string, options: UploadOptions): Promise<VideoFile> {
-    const file = await this.ai.files.upload({
-      file: filePath,
+  async upload(file: string | Blob, options: UploadOptions): Promise<VideoFile> {
+    const result = await this.ai.files.upload({
+      file,
       config: {
         mimeType: options.mimeType,
         displayName: options.displayName,
       },
     });
-
-    return file as VideoFile;
+    return result as VideoFile;
   }
 
   /**
@@ -78,7 +165,6 @@ export class GeminiVideoAnalyzer {
     let file = (await this.ai.files.get({ name: fileName })) as VideoFile;
 
     while (file.state !== "ACTIVE") {
-      // Check for timeout
       if (Date.now() - startTime > timeoutMs) {
         throw new Error(
           `Timeout after ${timeoutMs}ms waiting for file "${fileName}" to become ACTIVE. ` +
@@ -86,17 +172,14 @@ export class GeminiVideoAnalyzer {
         );
       }
 
-      // Check for failure
       if (file.state === "FAILED") {
         throw new Error(
           `File "${fileName}" failed to process. This may indicate a corrupt or unsupported file.`
         );
       }
 
-      // Log progress
       console.log(`File state: ${file.state}, waiting ${pollIntervalMs}ms...`);
 
-      // Wait and poll again
       await this.sleep(pollIntervalMs);
       file = (await this.ai.files.get({ name: fileName })) as VideoFile;
     }
@@ -108,12 +191,12 @@ export class GeminiVideoAnalyzer {
    * Upload and wait for processing to complete
    */
   async uploadAndWait(
-    filePath: string,
+    file: string | Blob,
     options: UploadOptions & { timeoutMs?: number; pollIntervalMs?: number }
   ): Promise<VideoFile> {
-    const file = await this.upload(filePath, options);
+    const uploaded = await this.upload(file, options);
     return this.waitForActive(
-      file.name,
+      uploaded.name,
       options.timeoutMs ?? DEFAULT_OPTIONS.timeoutMs,
       options.pollIntervalMs ?? DEFAULT_OPTIONS.pollIntervalMs
     );
@@ -171,18 +254,18 @@ export class GeminiVideoAnalyzer {
    * Complete workflow: upload, wait, analyze
    */
   async processVideo(
-    filePath: string,
+    file: string | Blob,
     prompt: string,
     uploadOptions: UploadOptions,
     analyzeOptions: Partial<AnalyzeOptions> = {}
   ): Promise<string> {
-    const file = await this.uploadAndWait(filePath, {
+    const uploaded = await this.uploadAndWait(file, {
       ...uploadOptions,
       timeoutMs: analyzeOptions.timeoutMs,
       pollIntervalMs: analyzeOptions.pollIntervalMs,
     });
 
-    return this.analyze(file, prompt, analyzeOptions);
+    return this.analyze(uploaded, prompt, analyzeOptions);
   }
 
   /**
@@ -257,7 +340,7 @@ const result = await analyzer.processVideo(
   "Create a detailed summary with timestamps",
   { mimeType: "video/mp4", displayName: "Meeting Recording" },
   {
-    model: "gemini-2.5-pro",
+    model: "gemini-3-pro-preview",
     timeoutMs: 600000, // 10 minutes for large files
     deleteAfterAnalysis: true,
   }
@@ -308,10 +391,7 @@ const file = await analyzer.uploadAndWait("./video.mp4", {
 // Analyze multiple times with different prompts
 const summary = await analyzer.analyze(file, "Provide a summary");
 const quiz = await analyzer.analyze(file, "Create a 5-question quiz");
-const timestamps = await analyzer.analyze(
-  file,
-  "List timestamps of key moments"
-);
+const timestamps = await analyzer.analyze(file, "List timestamps of key moments");
 
 // Clean up when done
 await analyzer.delete(file.name);
@@ -409,3 +489,20 @@ function getMimeType(filePath: string): string {
 // Usage
 const mimeType = getMimeType("./video.mp4"); // "video/mp4"
 ```
+
+## Error Handling
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `FAILED_PRECONDITION: file not in active state` | Used file before processing complete | Poll until `state === "ACTIVE"` |
+| `INVALID_ARGUMENT: unsupported MIME type` | Wrong mimeType | Use correct MIME type |
+| `RESOURCE_EXHAUSTED` | Rate limited | Implement exponential backoff |
+| Processing stuck at `PROCESSING` | Server issue or corrupt file | Retry upload or check file |
+
+## Official Documentation
+
+- **Files API**: https://ai.google.dev/api/files
+- **Video Understanding**: https://ai.google.dev/gemini-api/docs/video-understanding
+- **Files API Guide with Gemini**: https://ai.google.dev/gemini-api/docs/files
+
+
