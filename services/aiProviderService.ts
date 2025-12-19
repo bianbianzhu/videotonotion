@@ -33,7 +33,8 @@ export interface AIProvider {
     file: File | Blob,
     mimeType: string,
     bucketName: string,
-    onProgress?: (progress: GcsUploadProgress) => void
+    onProgress?: (progress: GcsUploadProgress) => void,
+    videoDuration?: number
   ): Promise<NoteSegment[]>;
 }
 
@@ -69,7 +70,8 @@ export function createAIProvider(config: AIConfig): AIProvider {
       file: File | Blob,
       mimeType: string,
       bucketName: string,
-      onProgress?: (progress: GcsUploadProgress) => void
+      onProgress?: (progress: GcsUploadProgress) => void,
+      videoDuration?: number
     ): Promise<NoteSegment[]> {
       if (config.provider !== 'vertex') {
         throw new Error('GCS upload is only supported with Vertex AI. Use Files API for Gemini.');
@@ -81,7 +83,8 @@ export function createAIProvider(config: AIConfig): AIProvider {
         mimeType,
         bucketName,
         config.model,
-        onProgress
+        onProgress,
+        videoDuration
       );
     },
   };

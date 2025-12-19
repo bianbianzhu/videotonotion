@@ -308,12 +308,14 @@ Upload a video to Google Cloud Storage for Vertex AI analysis. This is required 
 | `projectId` | string | No | Google Cloud project ID |
 | `location` | string | No | Vertex AI region |
 | `model` | string | No | Model name |
+| `videoDuration` | number | No | Total video duration in seconds (helps LLM generate valid timestamps) |
 
 **Example Request:**
 ```bash
 curl -X POST "http://localhost:3001/api/ai/vertex/gcs/upload" \
   -F "video=@video.mp4" \
-  -F "bucketName=my-video-bucket"
+  -F "bucketName=my-video-bucket" \
+  -F "videoDuration=1800"
 ```
 
 **Success Response (200):**
@@ -370,6 +372,7 @@ Analyze a video that was uploaded to GCS.
 | `projectId` | string | No | Google Cloud project ID |
 | `location` | string | No | Vertex AI region |
 | `model` | string | No | Model name |
+| `videoDuration` | number | No | Total video duration in seconds (helps LLM generate valid timestamps) |
 
 **Success Response (200):**
 ```json

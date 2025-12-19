@@ -138,6 +138,7 @@ const App: React.FC = () => {
           title: result.title,
           youtubeSessionId: result.sessionId,
           chunks: result.chunks,
+          totalDuration: result.duration,
           status: ProcessingStatus.READY,
           progress: 100,
         });
@@ -345,6 +346,10 @@ const App: React.FC = () => {
           throw new Error('No video file available');
         }
 
+        // Calculate total duration with fallback (same pattern as inline chunked flow)
+        const videoDuration = selectedSession.totalDuration ||
+          (selectedSession.chunks?.length ? selectedSession.chunks[selectedSession.chunks.length - 1].endTime : undefined);
+
         // Use GCS method with progress tracking
         allSegments = await provider.generateNotesFromVideoWithGcs(
           videoFile,
@@ -363,7 +368,8 @@ const App: React.FC = () => {
                 gcsUpload: progress,
               });
             }
-          }
+          },
+          videoDuration
         );
 
       } else if (selectedSession.chunks && selectedSession.youtubeSessionId) {

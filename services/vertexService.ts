@@ -88,7 +88,8 @@ export const generateNotesFromVideoVertexGcs = async (
   mimeType: string,
   bucketName: string,
   model?: string,
-  onProgress?: (progress: GcsUploadProgress) => void
+  onProgress?: (progress: GcsUploadProgress) => void,
+  videoDuration?: number
 ): Promise<NoteSegment[]> => {
   // Phase 1: Upload file to GCS via backend
   // bucketName is optional - server uses GCS_BUCKET_NAME env var as fallback
@@ -102,6 +103,9 @@ export const generateNotesFromVideoVertexGcs = async (
   formData.append('projectId', projectId || '');
   formData.append('location', location || VERTEX_DEFAULT_LOCATION);
   formData.append('model', model || VERTEX_DEFAULT_MODEL);
+  if (videoDuration !== undefined) {
+    formData.append('videoDuration', videoDuration.toString());
+  }
 
   const uploadResponse = await uploadToGcsWithProgress(
     `${API_BASE}/vertex/gcs/upload`,
@@ -128,6 +132,7 @@ export const generateNotesFromVideoVertexGcs = async (
       location: location || VERTEX_DEFAULT_LOCATION,
       model: model || VERTEX_DEFAULT_MODEL,
       mimeType,
+      videoDuration,
     }),
   });
 

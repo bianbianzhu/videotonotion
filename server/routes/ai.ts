@@ -30,6 +30,7 @@ interface GcsSession {
   location: string;
   model: string;
   mimeType: string;
+  videoDuration?: number;
   createdAt: Date;
 }
 
@@ -148,7 +149,7 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
   try {
     const file = req.file;
     const sessionId = (req as any).gcsSessionId;
-    const { bucketName: requestBucketName, projectId, location, model } = req.body;
+    const { bucketName: requestBucketName, projectId, location, model, videoDuration } = req.body;
     // Use env var as fallback if no bucket name provided
     const bucketName = requestBucketName || process.env.GCS_BUCKET_NAME;
 
@@ -183,6 +184,7 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
       location: location || 'us-central1',
       model: model || 'gemini-3-pro-preview',
       mimeType,
+      videoDuration: videoDuration ? parseFloat(videoDuration) : undefined,
       createdAt: new Date(),
     });
 
@@ -210,13 +212,14 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
 // POST /api/ai/vertex/gcs/analyze - Analyze video from GCS URI
 router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
   try {
-    const { sessionId, gcsUri, projectId, location, model, mimeType } = req.body;
+    const { sessionId, gcsUri, projectId, location, model, mimeType, videoDuration } = req.body;
 
     let analysisGcsUri = gcsUri;
     let analysisMimeType = mimeType || 'video/mp4';
     let analysisProjectId = projectId;
     let analysisLocation = location;
     let analysisModel = model;
+    let analysisVideoDuration = videoDuration ? parseFloat(videoDuration) : undefined;
     let session: GcsSession | undefined;
 
     // If sessionId provided, use stored session info
@@ -231,6 +234,7 @@ router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
       analysisProjectId = session.projectId || projectId;
       analysisLocation = session.location || location;
       analysisModel = session.model || model;
+      analysisVideoDuration = session.videoDuration ?? analysisVideoDuration;
     }
 
     if (!analysisGcsUri) {
@@ -240,12 +244,18 @@ router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
 
     console.log(`Analyzing video from GCS: ${analysisGcsUri}`);
 
+    // Build video metadata if duration is available
+    const videoMetadata = analysisVideoDuration
+      ? { totalDuration: analysisVideoDuration }
+      : undefined;
+
     const segments = await analyzeVideoVertexGcs(
       analysisProjectId || '',
       analysisLocation || 'us-central1',
       analysisModel || 'gemini-3-pro-preview',
       analysisGcsUri,
-      analysisMimeType
+      analysisMimeType,
+      videoMetadata
     );
 
     res.json({ segments });

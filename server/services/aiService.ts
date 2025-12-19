@@ -40,13 +40,18 @@ export interface ChunkContext {
   previousTopics?: string[];
 }
 
+/** Metadata for full video analysis (non-chunked) */
+export interface VideoMetadata {
+  totalDuration: number;
+}
+
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-const buildAnalysisPrompt = (chunkContext?: ChunkContext): string => {
+const buildAnalysisPrompt = (chunkContext?: ChunkContext, videoMetadata?: VideoMetadata): string => {
   let contextPrefix = '';
 
   if (chunkContext) {
@@ -64,6 +69,15 @@ IMPORTANT: All timestamps you return must be RELATIVE TO THIS CHUNK, starting fr
 ${previousTopics && previousTopics.length > 0
   ? `Topics from previous segment (for continuity): ${previousTopics.join(', ')}`
   : 'This is the first segment of the video.'}
+
+`;
+  } else if (videoMetadata) {
+    contextPrefix = `
+CONTEXT: This is a complete video with total duration of ${formatTime(videoMetadata.totalDuration)} (${videoMetadata.totalDuration.toFixed(1)} seconds).
+
+IMPORTANT: All timestamps must be within the video duration.
+- Valid timestamp range: 0 to ${videoMetadata.totalDuration.toFixed(1)} seconds
+- Do NOT generate timestamps that exceed ${videoMetadata.totalDuration.toFixed(1)} seconds
 
 `;
   }
@@ -174,6 +188,7 @@ export async function analyzeVideoVertexInline(
  * @param model - Model name (e.g., 'gemini-3-pro-preview')
  * @param gcsUri - GCS URI in format gs://bucket/path/to/video.mp4
  * @param mimeType - Video MIME type
+ * @param videoMetadata - Optional video metadata (e.g., total duration)
  * @returns Array of note segments with timestamps and content
  */
 export async function analyzeVideoVertexGcs(
@@ -181,7 +196,8 @@ export async function analyzeVideoVertexGcs(
   location: string,
   model: string,
   gcsUri: string,
-  mimeType: string
+  mimeType: string,
+  videoMetadata?: VideoMetadata
 ): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
@@ -194,7 +210,7 @@ export async function analyzeVideoVertexGcs(
     location: region || "global",
   });
 
-  const prompt = buildAnalysisPrompt(); // No chunk context for full video
+  const prompt = buildAnalysisPrompt(undefined, videoMetadata);
 
   const config: GenerateContentConfig = {
     temperature: 0.2,
