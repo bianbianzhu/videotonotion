@@ -2,10 +2,12 @@
 
 Use this reference when using **Vertex AI** (not direct Gemini API key). Files API does NOT work with Vertex AI - use GCS bucket instead.
 
+> **Important**: For video analysis requiring timestamps, use the canonical content structure (with explicit `role` and `parts`) instead of helper functions like `createUserContent`. See [Known Issues](#known-issues) for details.
+
 ## Quick Start
 
 ```typescript
-import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
 
 // 1. Upload to GCS
@@ -23,12 +25,25 @@ const ai = new GoogleGenAI({
   location: "us-central1",
 });
 
+// Use canonical structure for reliable video analysis
 const response = await ai.models.generateContent({
   model: "gemini-3-pro-preview",
-  contents: createUserContent([
-    createPartFromUri(gcsUri, "video/mp4"),
-    "Describe this video",
-  ]),
+  contents: [
+    {
+      role: "user",
+      parts: [
+        {
+          fileData: {
+            mimeType: "video/mp4",
+            fileUri: gcsUri,
+          },
+        },
+        {
+          text: "Describe this video",
+        },
+      ],
+    },
+  ],
 });
 ```
 
@@ -110,11 +125,7 @@ function getMimeTypeFromPath(filePath: string): string {
 ## Vertex AI Analysis with GCS
 
 ```typescript
-import {
-  GoogleGenAI,
-  createUserContent,
-  createPartFromUri,
-} from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 
 export async function analyzeVideoWithGcs(
   gcsUri: string,
@@ -132,12 +143,27 @@ export async function analyzeVideoWithGcs(
     location: options?.location || process.env.VERTEX_AI_LOCATION || "us-central1",
   });
 
+  // Use canonical structure for reliable timestamp extraction
+  const contents = [
+    {
+      role: "user",
+      parts: [
+        {
+          fileData: {
+            mimeType,
+            fileUri: gcsUri,
+          },
+        },
+        {
+          text: prompt,
+        },
+      ],
+    },
+  ];
+
   const response = await ai.models.generateContent({
     model: options?.model || "gemini-3-pro-preview",
-    contents: createUserContent([
-      createPartFromUri(gcsUri, mimeType),
-      prompt,
-    ]),
+    contents,
   });
 
   return response.text ?? "";
@@ -147,7 +173,7 @@ export async function analyzeVideoWithGcs(
 ## Complete Video Analyzer Class
 
 ```typescript
-import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
 import path from "path";
 
@@ -200,12 +226,27 @@ export class VertexVideoAnalyzer {
   ): Promise<string> {
     const opts = { ...DEFAULT_OPTIONS, ...options };
 
+    // Use canonical structure for reliable video analysis
+    const contents = [
+      {
+        role: "user",
+        parts: [
+          {
+            fileData: {
+              mimeType,
+              fileUri: gcsUri,
+            },
+          },
+          {
+            text: prompt,
+          },
+        ],
+      },
+    ];
+
     const response = await this.ai.models.generateContent({
       model: opts.model,
-      contents: createUserContent([
-        createPartFromUri(gcsUri, mimeType),
-        prompt,
-      ]),
+      contents,
     });
 
     if (opts.deleteAfterAnalysis) {
@@ -337,6 +378,70 @@ app.post("/analyze", upload.single("video"), async (req, res) => {
 | `NOT_FOUND` | Bucket doesn't exist | Create bucket first |
 | `INVALID_ARGUMENT` | Invalid `gs://` URI | Check URI format |
 | `Vertex AI auth failed` | ADC not configured | Run `gcloud auth application-default login` |
+
+## Known Issues
+
+### Timestamps Outside Video Duration
+
+**Problem:** When using helper functions like `createUserContent` and `createPartFromUri` for video analysis that requires timestamps, the model may return timestamps that exceed the actual video duration.
+
+**Example of problematic code:**
+```typescript
+// DO NOT use for timestamp-sensitive video analysis
+const contents = createUserContent([
+  createPartFromUri(gcsUri, "video/mp4"),
+  "Extract timestamps from this video",
+]);
+```
+
+**Solution:** Use the canonical content structure with explicit `role` and `parts`:
+```typescript
+// RECOMMENDED for video analysis
+const contents = [
+  {
+    role: "user",
+    parts: [
+      {
+        fileData: {
+          mimeType: "video/mp4",
+          fileUri: gcsUri,
+        },
+      },
+      {
+        text: "Extract timestamps from this video",
+      },
+    ],
+  },
+];
+```
+
+### Related Gemini Timestamp Issues
+
+Gemini models have documented timestamp hallucination issues:
+
+| Issue | Model | Problem |
+|-------|-------|---------|
+| [#269](https://github.com/google-gemini/generative-ai-js/issues/269) | Gemini 1.5 Flash 002 | Hallucinates timestamps during transcription |
+| [#426](https://github.com/google-gemini/deprecated-generative-ai-js/issues/426) | Gemini 2.0 Flash/Lite | Hallucinates timestamps for audio |
+| [#1359](https://github.com/googleapis/python-genai/issues/1359) | Gemini 2.5 Pro/Flash | Inaccurate YouTube URL timestamps |
+
+### Best Practices for Timestamp Accuracy
+
+1. **Always use canonical content structure** for video analysis
+2. **Include video duration in prompt:**
+   ```typescript
+   const prompt = `
+     Video duration: ${duration} seconds.
+     Valid timestamp range: 0 to ${duration}.
+     Do NOT generate timestamps exceeding ${duration}.
+
+     Analyze this video...
+   `;
+   ```
+3. **Validate returned timestamps** and filter those exceeding duration
+4. **Download YouTube videos** rather than using URLs directly
+
+See `docs/GEMINI_CONTENT_STRUCTURE.md` for comprehensive documentation.
 
 ## Official Documentation
 

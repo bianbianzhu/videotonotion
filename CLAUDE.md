@@ -153,6 +153,25 @@ IDLE → DOWNLOADING → READY → UPLOADING → ANALYZING → EXTRACTING_FRAMES
 
 `@/*` maps to the project root (configured in tsconfig.json and vite.config.ts).
 
+### Gemini API Content Structure
+
+When working with Gemini API content, **always use the canonical structure** with explicit `role` and `parts` for video analysis:
+
+```typescript
+// RECOMMENDED - canonical structure
+const contents = [
+  {
+    role: 'user',
+    parts: [
+      { fileData: { mimeType: 'video/mp4', fileUri: gcsUri } },
+      { text: prompt }
+    ]
+  }
+];
+```
+
+**Avoid helper functions like `createUserContent` for video analysis** - they may cause timestamps to exceed video duration. See `docs/GEMINI_CONTENT_STRUCTURE.md` for comprehensive documentation on the three approaches and known issues.
+
 ## Documentation
 
 Comprehensive documentation is available in `/docs/`:
@@ -162,6 +181,7 @@ Comprehensive documentation is available in `/docs/`:
 - `docs/API_REFERENCE.md` - Backend API documentation
 - `docs/DEVELOPMENT.md` - Development setup and troubleshooting
 - `docs/NOTION_EXPORT.md` - Export guide
+- `docs/GEMINI_CONTENT_STRUCTURE.md` - Gemini API content structure guide and best practices
 
 ## External Dependencies
 

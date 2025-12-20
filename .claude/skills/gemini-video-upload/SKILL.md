@@ -56,8 +56,10 @@ See [gemini-files-api.md](references/gemini-files-api.md) for complete patterns.
 
 ## Quick Start: GCS Bucket (Vertex AI)
 
+> **Note:** For video analysis with Vertex AI, use the canonical content structure (with explicit `role` and `parts`) for reliable timestamp extraction. See [vertex-gcs.md](references/vertex-gcs.md) for details on known issues with helper functions.
+
 ```typescript
-import { GoogleGenAI, createUserContent, createPartFromUri } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
 import { Storage } from "@google-cloud/storage";
 
 // Upload to GCS
@@ -68,9 +70,18 @@ const gcsUri = "gs://my-bucket/videos/my-video.mp4";
 // Analyze with Vertex AI (no polling)
 const ai = new GoogleGenAI({ vertexai: true, project: "my-project", location: "us-central1" });
 
+// Use canonical structure for reliable video analysis
 const response = await ai.models.generateContent({
   model: "gemini-3-pro-preview",
-  contents: createUserContent([createPartFromUri(gcsUri, "video/mp4"), "Describe this video"]),
+  contents: [
+    {
+      role: "user",
+      parts: [
+        { fileData: { mimeType: "video/mp4", fileUri: gcsUri } },
+        { text: "Describe this video" },
+      ],
+    },
+  ],
 });
 ```
 

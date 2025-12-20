@@ -5,6 +5,7 @@ import {
   GoogleGenAI,
   createUserContent,
   createPartFromUri,
+  Content,
 } from "@google/genai";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
@@ -219,12 +220,26 @@ export async function analyzeVideoVertexGcs(
     responseJsonSchema: zodToJsonSchema(responseSchema),
   };
 
+  const contents: Content[] = [
+    {
+      role: 'user',
+      parts: [
+        {
+          fileData: {
+            mimeType,
+            fileUri: gcsUri,
+          }
+        },
+        {
+          text: prompt,
+        }
+      ]
+    },
+  ];
+
   const response = await ai.models.generateContent({
     model: visionModel,
-    contents: createUserContent([
-      createPartFromUri(gcsUri, mimeType),
-      prompt,
-    ]),
+    contents,
     config,
   });
 
