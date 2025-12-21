@@ -1,4 +1,4 @@
-import { NoteSegment, ChunkContext, FilesApiUploadProgress, GcsUploadProgress } from '../types';
+import { NoteSegment, ChunkContext, FilesApiUploadProgress, GcsUploadProgress, NoteLanguage } from '../types';
 import { generateNotesFromVideoGemini, generateNotesFromVideoWithFilesApi } from './geminiService';
 import { generateNotesFromVideoVertex, generateNotesFromVideoVertexGcs } from './vertexService';
 
@@ -7,6 +7,7 @@ export interface GeminiConfig {
   apiKey: string;
   model?: string;
   strategy: 'inline' | 'filesApi';  // Files API only works with Gemini
+  language?: NoteLanguage;
 }
 
 export interface VertexConfig {
@@ -16,6 +17,7 @@ export interface VertexConfig {
   model?: string;
   strategy: 'inline' | 'gcs';       // GCS only works with Vertex AI (Files API NOT supported)
   gcsBucket?: string;               // Required when strategy is 'gcs'
+  language?: NoteLanguage;
 }
 
 export type AIConfig = GeminiConfig | VertexConfig;
@@ -39,10 +41,12 @@ export interface AIProvider {
 }
 
 export function createAIProvider(config: AIConfig): AIProvider {
+  const language: NoteLanguage = config.language || 'en';
+
   return {
     async generateNotesFromVideo(base64Data: string, mimeType: string, chunkContext?: ChunkContext): Promise<NoteSegment[]> {
       if (config.provider === 'gemini') {
-        return generateNotesFromVideoGemini(config.apiKey, base64Data, mimeType, config.model, chunkContext);
+        return generateNotesFromVideoGemini(config.apiKey, base64Data, mimeType, config.model, chunkContext, language);
       } else {
         return generateNotesFromVideoVertex(
           config.projectId,
@@ -50,7 +54,8 @@ export function createAIProvider(config: AIConfig): AIProvider {
           base64Data,
           mimeType,
           config.model,
-          chunkContext
+          chunkContext,
+          language
         );
       }
     },
@@ -63,7 +68,7 @@ export function createAIProvider(config: AIConfig): AIProvider {
       if (config.provider !== 'gemini') {
         throw new Error('Files API is only supported with Gemini API. Use GCS for Vertex AI.');
       }
-      return generateNotesFromVideoWithFilesApi(config.apiKey, file, mimeType, config.model, onProgress);
+      return generateNotesFromVideoWithFilesApi(config.apiKey, file, mimeType, config.model, onProgress, language);
     },
     // GCS only works with Vertex AI
     async generateNotesFromVideoWithGcs(
@@ -84,7 +89,8 @@ export function createAIProvider(config: AIConfig): AIProvider {
         bucketName,
         config.model,
         onProgress,
-        videoDuration
+        videoDuration,
+        language
       );
     },
   };
@@ -107,5 +113,6 @@ export function getDefaultConfig(): AIConfig {
     provider: 'gemini',
     apiKey: '',
     strategy: 'inline', // Default to inline for backward compatibility
+    language: 'en',
   };
 }

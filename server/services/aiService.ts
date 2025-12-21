@@ -46,13 +46,35 @@ export interface VideoMetadata {
   totalDuration: number;
 }
 
+export type NoteLanguage = 'en' | 'zh';
+
 const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
   const secs = Math.floor(seconds % 60);
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-const buildAnalysisPrompt = (chunkContext?: ChunkContext, videoMetadata?: VideoMetadata): string => {
+const buildLanguageInstruction = (language: NoteLanguage): string => {
+  if (language !== 'zh') return '';
+
+  return `
+LANGUAGE REQUIREMENT:
+- Write all general content, explanations, and summaries in Simplified Chinese (简体中文).
+- Write the JSON values for "title" and "markdown" in Simplified Chinese.
+- Keep the JSON keys exactly as: timestamp, title, markdown (do NOT translate keys).
+- Keep the following in English for accuracy:
+  - Technical terminology and jargon (e.g., API, HTTP, JSON)
+  - Code snippets, identifiers, variable names, function names, and API names
+  - Brand names and proper nouns (e.g., React, TypeScript, Google)
+- Do not translate anything inside backticks.
+`;
+};
+
+const buildAnalysisPrompt = (
+  chunkContext?: ChunkContext,
+  videoMetadata?: VideoMetadata,
+  language: NoteLanguage = 'en'
+): string => {
   let contextPrefix = '';
 
   if (chunkContext) {
@@ -94,6 +116,7 @@ IMPORTANT: All timestamps must be within the video duration.
     - Blockquotes
     - Bullet point lists
 
+${buildLanguageInstruction(language)}
     Return the response strictly as a JSON array.
     Ensure timestamps are chronological.
 
@@ -126,7 +149,8 @@ export async function analyzeVideoVertexInline(
   model: string,
   base64Data: string,
   mimeType: string,
-  chunkContext?: ChunkContext
+  chunkContext?: ChunkContext,
+  language: NoteLanguage = 'en'
 ): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
@@ -140,7 +164,7 @@ export async function analyzeVideoVertexInline(
     location: region || "global",
   });
 
-  const prompt = buildAnalysisPrompt(chunkContext);
+  const prompt = buildAnalysisPrompt(chunkContext, undefined, language);
 
   const contents: ContentListUnion = [
     {
@@ -198,7 +222,8 @@ export async function analyzeVideoVertexGcs(
   model: string,
   gcsUri: string,
   mimeType: string,
-  videoMetadata?: VideoMetadata
+  videoMetadata?: VideoMetadata,
+  language: NoteLanguage = 'en'
 ): Promise<NoteSegment[]> {
   const project = projectId || process.env.VERTEX_AI_PROJECT_ID;
   const region = location || process.env.VERTEX_AI_LOCATION;
@@ -211,7 +236,7 @@ export async function analyzeVideoVertexGcs(
     location: region || "global",
   });
 
-  const prompt = buildAnalysisPrompt(undefined, videoMetadata);
+  const prompt = buildAnalysisPrompt(undefined, videoMetadata, language);
 
   const config: GenerateContentConfig = {
     temperature: 0.2,

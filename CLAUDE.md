@@ -94,6 +94,13 @@ Frontend (React + Vite, Port 3000)
 
 **IMPORTANT:** Files API does NOT work with Vertex AI. Use GCS bucket strategy for large videos with Vertex AI.
 
+### Output Language
+
+Generated notes support an `EN/中文` toggle in the header (`components/ProviderSelector.tsx`).
+
+- `en`: English output
+- `zh`: Simplified Chinese output, while keeping technical terminology, identifiers, and code in English (including anything inside backticks)
+
 ### Core Flow
 
 1. **Video Input** - User uploads a file OR provides a YouTube URL

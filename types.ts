@@ -6,6 +6,11 @@ export interface NoteSegment {
   imageUrl?: string; // Server URL for persisted images (from database)
 }
 
+// Output language for generated notes
+// - 'en': English
+// - 'zh': Simplified Chinese (简体中文)
+export type NoteLanguage = 'en' | 'zh';
+
 // Video analysis strategy selection
 // - 'inline': Chunk and base64 encode (works with both Gemini and Vertex AI)
 // - 'filesApi': Upload to Gemini Files API (Gemini API only, NOT Vertex AI)

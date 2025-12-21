@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type, createUserContent, createPartFromUri } from "@google/genai";
-import { NoteSegment, ChunkContext, FilesApiUploadProgress } from "../types";
+import { NoteSegment, ChunkContext, FilesApiUploadProgress, NoteLanguage } from "../types";
 import { GEMINI_MODEL, FILES_API_POLL_INTERVAL_MS, FILES_API_TIMEOUT_MS } from "../constants";
 
 const formatTime = (seconds: number): string => {
@@ -8,7 +8,23 @@ const formatTime = (seconds: number): string => {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 };
 
-const buildAnalysisPrompt = (chunkContext?: ChunkContext): string => {
+const buildLanguageInstruction = (language: NoteLanguage): string => {
+  if (language !== 'zh') return '';
+
+  return `
+LANGUAGE REQUIREMENT:
+- Write all general content, explanations, and summaries in Simplified Chinese (简体中文).
+- Write the JSON values for "title" and "markdown" in Simplified Chinese.
+- Keep the JSON keys exactly as: timestamp, title, markdown (do NOT translate keys).
+- Keep the following in English for accuracy:
+  - Technical terminology and jargon (e.g., API, HTTP, JSON)
+  - Code snippets, identifiers, variable names, function names, and API names
+  - Brand names and proper nouns (e.g., React, TypeScript, Google)
+- Do not translate anything inside backticks.
+`;
+};
+
+const buildAnalysisPrompt = (chunkContext?: ChunkContext, language: NoteLanguage = 'en'): string => {
   let contextPrefix = '';
 
   if (chunkContext) {
@@ -38,6 +54,7 @@ ${previousTopics && previousTopics.length > 0
     2. A concise title for the section.
     3. A detailed summary paragraph of the spoken content for that section.
 
+${buildLanguageInstruction(language)}
     Return the response strictly as a JSON array.
     Ensure timestamps are chronological.`;
 };
@@ -62,9 +79,10 @@ export const generateNotesFromVideo = async (
   apiKey: string,
   base64Data: string,
   mimeType: string,
-  chunkContext?: ChunkContext
+  chunkContext?: ChunkContext,
+  language?: NoteLanguage
 ): Promise<NoteSegment[]> => {
-  return generateNotesFromVideoGemini(apiKey, base64Data, mimeType, undefined, chunkContext);
+  return generateNotesFromVideoGemini(apiKey, base64Data, mimeType, undefined, chunkContext, language);
 };
 
 export const generateNotesFromVideoGemini = async (
@@ -72,10 +90,11 @@ export const generateNotesFromVideoGemini = async (
   base64Data: string,
   mimeType: string,
   model?: string,
-  chunkContext?: ChunkContext
+  chunkContext?: ChunkContext,
+  language: NoteLanguage = 'en'
 ): Promise<NoteSegment[]> => {
   const ai = new GoogleGenAI({ apiKey });
-  const prompt = buildAnalysisPrompt(chunkContext);
+  const prompt = buildAnalysisPrompt(chunkContext, language);
 
   try {
     const response = await ai.models.generateContent({
@@ -121,7 +140,8 @@ export const generateNotesFromVideoWithFilesApi = async (
   file: File | Blob,
   mimeType: string,
   model?: string,
-  onProgress?: (progress: FilesApiUploadProgress) => void
+  onProgress?: (progress: FilesApiUploadProgress) => void,
+  language: NoteLanguage = 'en'
 ): Promise<NoteSegment[]> => {
   const ai = new GoogleGenAI({ apiKey });
   const modelName = model || GEMINI_MODEL;
@@ -166,7 +186,7 @@ export const generateNotesFromVideoWithFilesApi = async (
   });
 
   // Phase 3: Analyze with file reference
-  const prompt = buildAnalysisPrompt(); // No chunk context for full video
+  const prompt = buildAnalysisPrompt(undefined, language); // No chunk context for full video
 
   try {
     const response = await ai.models.generateContent({

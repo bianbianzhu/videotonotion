@@ -1,6 +1,7 @@
 import React from 'react';
-import { Key, Cloud, Zap, Database, HardDrive } from 'lucide-react';
+import { Key, Cloud, Zap, Database, HardDrive, Languages } from 'lucide-react';
 import { AIConfig, GeminiConfig, VertexConfig } from '../services/aiProviderService';
+import { NoteLanguage } from '../types';
 import { VERTEX_LOCATIONS, VERTEX_DEFAULT_LOCATION } from '../constants';
 
 interface ProviderSelectorProps {
@@ -12,6 +13,8 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
   const isGemini = config.provider === 'gemini';
   const isInline = config.strategy === 'inline';
   const isGcs = config.strategy === 'gcs';
+  const language: NoteLanguage = config.language || 'en';
+  const isChinese = language === 'zh';
 
   const handleProviderChange = (provider: 'gemini' | 'vertex') => {
     if (provider === 'gemini') {
@@ -21,6 +24,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
         provider: 'gemini',
         apiKey: '',
         strategy: strategy as 'inline' | 'filesApi',
+        language,
       } as GeminiConfig);
     } else {
       // When switching to Vertex AI, convert 'filesApi' to 'inline' (filesApi is not valid for Vertex)
@@ -30,6 +34,7 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
         projectId: '',
         location: VERTEX_DEFAULT_LOCATION,
         strategy: strategy as 'inline' | 'gcs',
+        language,
       } as VertexConfig);
     }
   };
@@ -40,6 +45,10 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
 
   const handleVertexStrategyChange = (strategy: 'inline' | 'gcs') => {
     onChange({ ...config, strategy } as VertexConfig);
+  };
+
+  const handleLanguageChange = (nextLanguage: NoteLanguage) => {
+    onChange({ ...config, language: nextLanguage } as AIConfig);
   };
 
   return (
@@ -133,6 +142,32 @@ const ProviderSelector: React.FC<ProviderSelectorProps> = ({ config, onChange })
           {isGemini ? '(up to 2GB)' : '(requires bucket)'}
         </span>
       )}
+
+      {/* Language Toggle */}
+      <div className="flex bg-gray-100 rounded-lg p-1" title="Output language for generated notes">
+        <button
+          onClick={() => handleLanguageChange('en')}
+          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+            !isChinese
+              ? 'bg-white shadow-sm text-gray-900'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Languages className="w-4 h-4 inline mr-1" />
+          EN
+        </button>
+        <button
+          onClick={() => handleLanguageChange('zh')}
+          className={`px-3 py-1 text-sm rounded-md transition-colors ${
+            isChinese
+              ? 'bg-white shadow-sm text-gray-900'
+              : 'text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Languages className="w-4 h-4 inline mr-1" />
+          中文
+        </button>
+      </div>
 
       {/* Gemini Config */}
       {isGemini && (

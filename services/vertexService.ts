@@ -1,4 +1,4 @@
-import { NoteSegment, ChunkContext, GcsUploadProgress } from '../types';
+import { NoteSegment, ChunkContext, GcsUploadProgress, NoteLanguage } from '../types';
 import { VERTEX_DEFAULT_MODEL, VERTEX_DEFAULT_LOCATION } from '../constants';
 
 const API_BASE = '/api/ai';
@@ -9,7 +9,8 @@ export const generateNotesFromVideoVertex = async (
   base64Data: string,
   mimeType: string,
   model?: string,
-  chunkContext?: ChunkContext
+  chunkContext?: ChunkContext,
+  language: NoteLanguage = 'en'
 ): Promise<NoteSegment[]> => {
   const response = await fetch(`${API_BASE}/vertex/analyze`, {
     method: 'POST',
@@ -21,6 +22,7 @@ export const generateNotesFromVideoVertex = async (
       base64Data,
       mimeType,
       chunkContext,
+      language,
     }),
   });
 
@@ -89,7 +91,8 @@ export const generateNotesFromVideoVertexGcs = async (
   bucketName: string,
   model?: string,
   onProgress?: (progress: GcsUploadProgress) => void,
-  videoDuration?: number
+  videoDuration?: number,
+  language: NoteLanguage = 'en'
 ): Promise<NoteSegment[]> => {
   // Phase 1: Upload file to GCS via backend
   // bucketName is optional - server uses GCS_BUCKET_NAME env var as fallback
@@ -103,6 +106,7 @@ export const generateNotesFromVideoVertexGcs = async (
   formData.append('projectId', projectId || '');
   formData.append('location', location || VERTEX_DEFAULT_LOCATION);
   formData.append('model', model || VERTEX_DEFAULT_MODEL);
+  formData.append('language', language);
   if (videoDuration !== undefined) {
     formData.append('videoDuration', videoDuration.toString());
   }
@@ -133,6 +137,7 @@ export const generateNotesFromVideoVertexGcs = async (
       model: model || VERTEX_DEFAULT_MODEL,
       mimeType,
       videoDuration,
+      language,
     }),
   });
 

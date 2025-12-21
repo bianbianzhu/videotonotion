@@ -251,7 +251,8 @@ Analyze video content using Google Vertex AI with inline base64 data (proxy endp
   "mimeType": "video/mp4",
   "projectId": "your-gcp-project-id",
   "location": "us-central1",
-  "model": "gemini-3-pro-preview"
+  "model": "gemini-3-pro-preview",
+  "language": "en"
 }
 ```
 
@@ -264,6 +265,7 @@ Analyze video content using Google Vertex AI with inline base64 data (proxy endp
 | `projectId` | string | No | Google Cloud project ID (optional, uses env var) |
 | `location` | string | No | Vertex AI region (default: us-central1) |
 | `model` | string | No | Model name (default: gemini-3-pro-preview) |
+| `language` | string | No | Output language for generated notes (`en` or `zh`, default: `en`) |
 
 **Success Response (200):**
 ```json
@@ -308,6 +310,7 @@ Upload a video to Google Cloud Storage for Vertex AI analysis. This is required 
 | `projectId` | string | No | Google Cloud project ID |
 | `location` | string | No | Vertex AI region |
 | `model` | string | No | Model name |
+| `language` | string | No | Output language for generated notes (`en` or `zh`, default: `en`) |
 | `videoDuration` | number | No | Total video duration in seconds (helps LLM generate valid timestamps) |
 
 **Example Request:**
@@ -315,6 +318,7 @@ Upload a video to Google Cloud Storage for Vertex AI analysis. This is required 
 curl -X POST "http://localhost:3001/api/ai/vertex/gcs/upload" \
   -F "video=@video.mp4" \
   -F "bucketName=my-video-bucket" \
+  -F "language=en" \
   -F "videoDuration=1800"
 ```
 
@@ -348,7 +352,8 @@ Analyze a video that was uploaded to GCS.
   "sessionId": "550e8400-e29b-41d4-a716-446655440000",
   "projectId": "your-gcp-project-id",
   "location": "us-central1",
-  "model": "gemini-3-pro-preview"
+  "model": "gemini-3-pro-preview",
+  "language": "en"
 }
 ```
 
@@ -373,6 +378,7 @@ Analyze a video that was uploaded to GCS.
 | `location` | string | No | Vertex AI region |
 | `model` | string | No | Model name |
 | `videoDuration` | number | No | Total video duration in seconds (helps LLM generate valid timestamps) |
+| `language` | string | No | Output language for generated notes (`en` or `zh`, default: `en`) |
 
 **Success Response (200):**
 ```json

@@ -9,6 +9,13 @@ import { uploadToGcs, deleteFromGcs } from '../services/gcsService.js';
 
 const router: Router = Router();
 
+type NoteLanguage = 'en' | 'zh';
+
+function parseLanguage(value: unknown): NoteLanguage | undefined {
+  if (value === 'en' || value === 'zh') return value;
+  return undefined;
+}
+
 // ============================================================================
 // GCS Configuration (replaces Files API which doesn't work with Vertex AI)
 // ============================================================================
@@ -29,6 +36,7 @@ interface GcsSession {
   projectId: string;
   location: string;
   model: string;
+  language: NoteLanguage;
   mimeType: string;
   videoDuration?: number;
   createdAt: Date;
@@ -101,7 +109,8 @@ function getMimeTypeFromPath(filePath: string): string {
 // POST /api/ai/vertex/analyze - Analyze video with Vertex AI (inline base64)
 router.post('/vertex/analyze', async (req: Request, res: Response) => {
   try {
-    const { projectId, location, model, base64Data, mimeType, chunkContext } = req.body;
+    const { projectId, location, model, base64Data, mimeType, chunkContext, language } = req.body;
+    const analysisLanguage: NoteLanguage = parseLanguage(language) ?? 'en';
 
     if (!base64Data || !mimeType) {
       res.status(400).json({
@@ -116,7 +125,8 @@ router.post('/vertex/analyze', async (req: Request, res: Response) => {
       model || 'gemini-3-pro-preview',
       base64Data,
       mimeType,
-      chunkContext
+      chunkContext,
+      analysisLanguage
     );
 
     res.json({ segments });
@@ -149,7 +159,8 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
   try {
     const file = req.file;
     const sessionId = (req as any).gcsSessionId;
-    const { bucketName: requestBucketName, projectId, location, model, videoDuration } = req.body;
+    const { bucketName: requestBucketName, projectId, location, model, videoDuration, language } = req.body;
+    const analysisLanguage: NoteLanguage = parseLanguage(language) ?? 'en';
     // Use env var as fallback if no bucket name provided
     const bucketName = requestBucketName || process.env.GCS_BUCKET_NAME;
 
@@ -183,6 +194,7 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
       projectId: projectId || '',
       location: location || 'us-central1',
       model: model || 'gemini-3-pro-preview',
+      language: analysisLanguage,
       mimeType,
       videoDuration: videoDuration ? parseFloat(videoDuration) : undefined,
       createdAt: new Date(),
@@ -212,7 +224,7 @@ router.post('/vertex/gcs/upload', gcsUpload.single('video'), async (req: Request
 // POST /api/ai/vertex/gcs/analyze - Analyze video from GCS URI
 router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
   try {
-    const { sessionId, gcsUri, projectId, location, model, mimeType, videoDuration } = req.body;
+    const { sessionId, gcsUri, projectId, location, model, mimeType, videoDuration, language } = req.body;
 
     let analysisGcsUri = gcsUri;
     let analysisMimeType = mimeType || 'video/mp4';
@@ -220,6 +232,8 @@ router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
     let analysisLocation = location;
     let analysisModel = model;
     let analysisVideoDuration = videoDuration ? parseFloat(videoDuration) : undefined;
+    const requestLanguage = parseLanguage(language);
+    let analysisLanguage: NoteLanguage = requestLanguage ?? 'en';
     let session: GcsSession | undefined;
 
     // If sessionId provided, use stored session info
@@ -235,6 +249,7 @@ router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
       analysisLocation = session.location || location;
       analysisModel = session.model || model;
       analysisVideoDuration = session.videoDuration ?? analysisVideoDuration;
+      analysisLanguage = requestLanguage ?? session.language ?? analysisLanguage;
     }
 
     if (!analysisGcsUri) {
@@ -255,7 +270,8 @@ router.post('/vertex/gcs/analyze', async (req: Request, res: Response) => {
       analysisModel || 'gemini-3-pro-preview',
       analysisGcsUri,
       analysisMimeType,
-      videoMetadata
+      videoMetadata,
+      analysisLanguage
     );
 
     res.json({ segments });

@@ -12,6 +12,7 @@ A full-stack application that converts video lectures into structured, Notion-re
 - **Session Management** - Track multiple video processing sessions with progress indicators
 - **Dual AI Provider** - Support for both direct Gemini API and Google Vertex AI
 - **Flexible Video Processing** - Multiple strategies for different video sizes and providers
+- **Language Toggle** - Generate notes in English or Simplified Chinese (technical terms/code kept in English)
 
 ## Tech Stack
 
@@ -134,6 +135,13 @@ The app supports different strategies depending on your AI provider:
    - `roles/storage.objectCreator` - to upload videos
    - `roles/storage.objectViewer` - for Vertex AI to read
 3. Enter the bucket name in the UI when selecting "GCS Bucket" strategy
+
+## Output Language
+
+Use the `EN/中文` toggle in the header to control the language of generated notes.
+
+- `EN`: English output
+- `中文`: Simplified Chinese output, while keeping technical terminology, identifiers, and code in English (including anything inside backticks)
 
 ## Project Structure
 
